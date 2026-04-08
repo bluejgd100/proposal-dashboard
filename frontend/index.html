@@ -387,11 +387,13 @@ function rBoard(){
             ${s.deals.map(d=>`
               <div class="deal-card" onclick="window.open('https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}','_blank')" title="Open in HubSpot">
                 <div class="dc-name">${d.name}</div>
+                ${d.clientCompany?'<div style="font-size:10px;color:#4a5568;margin-bottom:3px;">'+d.clientCompany+'</div>':''}
                 <div class="dc-amount">${d.amount?fmt$(d.amount):'\u2014'}</div>
                 <div class="dc-meta">
                   <span>${d.ownerName}</span>
                   <span>${daysAgo(d.lastModified)}</span>
                 </div>
+                ${d.linesOfBusiness?'<div style="font-size:9px;color:#a0aec0;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+d.linesOfBusiness+'</div>':''}
               </div>
             `).join('')}
             ${s.deals.length===0?'<div style="text-align:center;color:#a0aec0;font-size:11px;padding:20px 0;">No deals</div>':''}
@@ -405,8 +407,8 @@ function rBoard(){
 function filterBoard(){
   const q=(document.getElementById('board-search')?.value||'').toLowerCase();
   document.querySelectorAll('.deal-card').forEach(c=>{
-    const name=c.querySelector('.dc-name')?.textContent.toLowerCase()||'';
-    c.style.display=(!q||name.includes(q))?'':'none';
+    const txt=(c.textContent||'').toLowerCase();
+    c.style.display=(!q||txt.includes(q))?'':'none';
   });
 }
 
@@ -421,7 +423,7 @@ function rDeals(){
 
   setContent(`
     <div class="toolbar">
-      <input type="text" id="deal-search" placeholder="Search deals by name, owner, stage..." oninput="rDealsTable()">
+      <input type="text" id="deal-search" placeholder="Search by deal name, company, owner, stage..." oninput="rDealsTable()">
       <select id="deal-stage-filter" onchange="rDealsTable()">
         <option value="">All Stages</option>
         ${(DATA.stages||[]).map(s=>`<option value="${s.name}">${s.name} (${s.count})</option>`).join('')}
@@ -430,10 +432,12 @@ function rDeals(){
     <div class="card"><div class="tbl-wrap"><table id="deals-table">
       <thead><tr>
         <th onclick="sortDeals('name')">Deal Name</th>
+        <th onclick="sortDeals('clientCompany')">Client Company</th>
         <th onclick="sortDeals('amount')">Amount</th>
         <th onclick="sortDeals('stage')">Stage</th>
         <th onclick="sortDeals('ownerName')">Owner</th>
-        <th onclick="sortDeals('createDate')">Created</th>
+        <th onclick="sortDeals('linesOfBusiness')">Lines of Business</th>
+        <th onclick="sortDeals('closeDate')">Close Date</th>
         <th onclick="sortDeals('lastModified')">Last Modified</th>
       </tr></thead>
       <tbody id="deals-tbody"></tbody>
@@ -448,7 +452,7 @@ function rDealsTable(){
   const sf=document.getElementById('deal-stage-filter')?.value||'';
   let deals=(window._allDeals||[]).filter(d=>{
     if(sf&&d.stage!==sf) return false;
-    if(q&&!d.name.toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)&&!d.stage.toLowerCase().includes(q)) return false;
+    if(q&&!d.name.toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)&&!d.stage.toLowerCase().includes(q)&&!(d.clientCompany||'').toLowerCase().includes(q)&&!(d.linesOfBusiness||'').toLowerCase().includes(q)) return false;
     return true;
   });
   deals.sort((a,b)=>{
@@ -461,10 +465,12 @@ function rDealsTable(){
   tbody.innerHTML=deals.map(d=>`
     <tr>
       <td><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}" target="_blank" title="Open in HubSpot">${d.name}</a></td>
+      <td>${d.clientCompany||'\u2014'}</td>
       <td style="font-weight:600;">${d.amount?fmt$(d.amount):'\u2014'}</td>
       <td>${stageBadge(d.stage)}</td>
       <td>${d.ownerName}</td>
-      <td>${fD(d.createDate)}</td>
+      <td>${d.linesOfBusiness||'\u2014'}</td>
+      <td>${fD(d.closeDate)}</td>
       <td>${fD(d.lastModified)}</td>
     </tr>
   `).join('');

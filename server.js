@@ -162,7 +162,7 @@ async function fetchAllDeals() {
   const rows = await queryFabric("SELECT * FROM dbo.hubspot_deals");
 
   return rows.map((row) => {
-    const stageName = row.dealstage || "Unknown";
+    const stageName = row.dealstage_name || row.dealstage || "Unknown";
     return {
       id: row.deal_id,
       name: row.dealname || "Unnamed Deal",
@@ -174,7 +174,19 @@ async function fetchAllDeals() {
       createDate: row.createdate,
       lastModified: row.hs_lastmodifieddate,
       ownerId: row.hubspot_owner_id,
-      ownerName: row.hubspot_owner_id || "Unassigned",
+      ownerName: row.owner_name || "Unassigned",
+      clientCompany: row.client_company_name || "",
+      linesOfBusiness: row.lines_of_business || "",
+      serviceLine: row.service_line || "",
+      dealType: row.dealtype || "",
+      loiFee: row.loi_fee || "",
+      term: row.term || "",
+      proposalDate: row.proposal_date,
+      serviceAgreementSigned: row.service_agreement_signed,
+      referralCompany: row.referral_company || "",
+      serviceProvider: row.service_provider_company_name || "",
+      daysToClose: row.days_to_close,
+      description: row.description || "",
     };
   });
 }
