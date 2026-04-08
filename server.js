@@ -2,14 +2,19 @@ const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const sql = require("mssql");
+const { ClientSecretCredential } = require("@azure/identity");
 
 const app = express();
 app.use(express.json());
 
 // ── Config ──
 const PORT = process.env.PORT || 8080;
-const HUBSPOT_ACCESS_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN || "";
-const HUBSPOT_PERSONAL_KEY = process.env.HUBSPOT_PERSONAL_KEY || "";
+const FABRIC_SQL_SERVER = process.env.FABRIC_SQL_SERVER || "";
+const FABRIC_DATABASE = process.env.FABRIC_DATABASE || "";
+const AZURE_TENANT_ID = process.env.AZURE_TENANT_ID || "";
+const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID || "";
+const AZURE_CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET || "";
 
 // Data directory for change log persistence
 const DATA_DIR = process.env.DATA_DIR || (process.env.WEBSITE_SITE_NAME ? "/home/data" : path.join(__dirname, "data"));
@@ -67,75 +72,42 @@ function verifyAuth(req, res, next) {
   res.status(401).json({ error: "Unauthorized" });
 }
 
-// ── HubSpot Token Management ──
-let hubspotToken = HUBSPOT_ACCESS_TOKEN;
-let tokenExpiry = 0;
+// ── Fabric SQL Connection ──
+let pool = null;
 
-async function getHubSpotToken() {
-  // If we have a direct access token and it hasn't expired, use it
-  if (hubspotToken && Date.now() < tokenExpiry) return hubspotToken;
+async function getConnection() {
+  if (pool && pool.connected) return pool;
 
-  // Try to exchange personal access key for access token
-  if (HUBSPOT_PERSONAL_KEY) {
-    try {
-      const r = await fetch(
-        "https://api.hubapi.com/oauth/personal-access-keys/v1/tokens",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ personalAccessKey: HUBSPOT_PERSONAL_KEY }),
-        }
-      );
-      if (r.ok) {
-        const data = await r.json();
-        hubspotToken = data.accessToken || data.token;
-        tokenExpiry = Date.now() + 25 * 60 * 1000; // 25 min
-        console.log("[HubSpot] Token refreshed via personal access key");
-        return hubspotToken;
-      }
-    } catch (e) {
-      console.error("[HubSpot] Token exchange failed:", e.message);
-    }
-  }
+  const credential = new ClientSecretCredential(AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET);
+  const tokenResponse = await credential.getToken("https://database.windows.net/.default");
 
-  // Fallback to direct token
-  if (HUBSPOT_ACCESS_TOKEN) {
-    hubspotToken = HUBSPOT_ACCESS_TOKEN;
-    return hubspotToken;
-  }
-
-  throw new Error("No HubSpot token available");
-}
-
-async function hubspotGet(endpoint) {
-  const token = await getHubSpotToken();
-  const r = await fetch(`https://api.hubapi.com${endpoint}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const config = {
+    server: FABRIC_SQL_SERVER,
+    database: FABRIC_DATABASE,
+    options: {
+      encrypt: true,
+      trustServerCertificate: false,
     },
-  });
-  if (r.status === 401) {
-    // Token expired, reset and retry once
-    tokenExpiry = 0;
-    const newToken = await getHubSpotToken();
-    const r2 = await fetch(`https://api.hubapi.com${endpoint}`, {
-      headers: {
-        Authorization: `Bearer ${newToken}`,
-        "Content-Type": "application/json",
+    authentication: {
+      type: "azure-active-directory-access-token",
+      options: {
+        token: tokenResponse.token,
       },
-    });
-    if (!r2.ok) throw new Error(`HubSpot API ${r2.status}: ${await r2.text()}`);
-    return r2.json();
-  }
-  if (!r.ok) throw new Error(`HubSpot API ${r.status}: ${await r.text()}`);
-  return r.json();
+    },
+  };
+
+  pool = await sql.connect(config);
+  console.log("[Fabric] Connected to SQL endpoint");
+  return pool;
 }
 
-// ── Pipeline Stage Mapping ──
-let stageMap = {}; // stageId -> { label, displayOrder }
-let pipelineId = null;
+async function queryFabric(query) {
+  const conn = await getConnection();
+  const result = await conn.request().query(query);
+  return result.recordset;
+}
 
+// ── Pipeline Stage Config ──
 const STAGE_ORDER = [
   "Intro Call",
   "Proposal Build",
@@ -146,107 +118,36 @@ const STAGE_ORDER = [
   "Service Agreement",
 ];
 
-async function loadPipelineStages() {
-  try {
-    const data = await hubspotGet("/crm/v3/pipelines/deals");
-    for (const pipeline of data.results || []) {
-      for (const stage of pipeline.stages || []) {
-        stageMap[stage.id] = {
-          label: stage.label,
-          displayOrder: stage.displayOrder,
-          pipelineId: pipeline.id,
-          pipelineLabel: pipeline.label,
-        };
-      }
-      // Detect the proposal pipeline
-      const hasProposalStages = (pipeline.stages || []).some(
-        (s) =>
-          s.label.toLowerCase().includes("proposal") ||
-          s.label.toLowerCase().includes("intro call")
-      );
-      if (hasProposalStages) pipelineId = pipeline.id;
-    }
-    console.log(
-      `[HubSpot] Loaded ${Object.keys(stageMap).length} stages across ${data.results.length} pipelines`
-    );
-  } catch (e) {
-    console.error("[HubSpot] Failed to load pipelines:", e.message);
-  }
-}
-
-function getStageName(stageId) {
-  return stageMap[stageId]?.label || `Stage ${stageId}`;
-}
-
 function getStageOrder(stageName) {
   const idx = STAGE_ORDER.findIndex(
-    (s) => s.toLowerCase() === stageName.toLowerCase()
+    (s) => s.toLowerCase() === (stageName || "").toLowerCase()
   );
   return idx >= 0 ? idx : 99;
 }
 
-// ── Owner Mapping ──
-let ownerMap = {}; // ownerId -> name
-
-async function loadOwners() {
-  try {
-    const data = await hubspotGet("/crm/v3/owners?limit=100");
-    for (const owner of data.results || []) {
-      ownerMap[owner.id] = `${owner.firstName || ""} ${owner.lastName || ""}`.trim() || owner.email;
-    }
-    console.log(`[HubSpot] Loaded ${Object.keys(ownerMap).length} owners`);
-  } catch (e) {
-    console.error("[HubSpot] Failed to load owners:", e.message);
-  }
-}
-
-// ── Deal Fetching ──
+// ── Deal Fetching from Fabric ──
 let cachedDeals = [];
 let lastRefresh = null;
 
 async function fetchAllDeals() {
-  const properties = [
-    "dealname", "amount", "dealstage", "pipeline", "closedate",
-    "createdate", "hs_lastmodifieddate", "hubspot_owner_id",
-    "hs_deal_stage_probability",
-  ].join(",");
+  const rows = await queryFabric("SELECT * FROM dbo.hubspot_deals");
 
-  const allDeals = [];
-  let after = null;
-
-  while (true) {
-    let url = `/crm/v3/objects/deals?limit=100&properties=${properties}`;
-    if (after) url += `&after=${after}`;
-    const data = await hubspotGet(url);
-
-    for (const deal of data.results || []) {
-      const stageName = getStageName(deal.properties.dealstage);
-      allDeals.push({
-        id: deal.id,
-        name: deal.properties.dealname,
-        amount: parseFloat(deal.properties.amount) || 0,
-        stageId: deal.properties.dealstage,
-        stage: stageName,
-        stageOrder: getStageOrder(stageName),
-        pipelineId: deal.properties.pipeline,
-        closeDate: deal.properties.closedate,
-        createDate: deal.properties.createdate,
-        lastModified: deal.properties.hs_lastmodifieddate,
-        ownerId: deal.properties.hubspot_owner_id,
-        ownerName: ownerMap[deal.properties.hubspot_owner_id] || "Unassigned",
-        probability: deal.properties.hs_deal_stage_probability,
-        url: deal.url || `https://app.hubspot.com/contacts/${deal.properties.hs_object_id || deal.id}/record/0-3/${deal.id}`,
-      });
-    }
-
-    if (data.paging?.next?.after) {
-      after = data.paging.next.after;
-    } else {
-      break;
-    }
-  }
-
-  return allDeals;
+  return rows.map((row) => {
+    const stageName = row.dealstage || "Unknown";
+    return {
+      id: row.deal_id,
+      name: row.dealname || "Unnamed Deal",
+      amount: parseFloat(row.amount) || 0,
+      stageId: row.dealstage,
+      stage: stageName,
+      stageOrder: getStageOrder(stageName),
+      closeDate: row.closedate,
+      createDate: row.createdate,
+      lastModified: row.hs_lastmodifieddate,
+      ownerId: row.hubspot_owner_id,
+      ownerName: row.hubspot_owner_id || "Unassigned",
+    };
+  });
 }
 
 // ── Change Log ──
@@ -301,7 +202,6 @@ function detectChanges(newDeals) {
   for (const deal of newDeals) {
     const old = prev[deal.id];
     if (!old) {
-      // New deal
       changelog.push({
         timestamp: now,
         dealId: deal.id,
@@ -312,7 +212,6 @@ function detectChanges(newDeals) {
         amount: deal.amount,
       });
     } else if (old.stageId !== deal.stageId) {
-      // Stage changed
       changelog.push({
         timestamp: now,
         dealId: deal.id,
@@ -325,7 +224,6 @@ function detectChanges(newDeals) {
     }
   }
 
-  // Detect removed deals
   const currentIds = new Set(newDeals.map((d) => d.id));
   for (const [id, old] of Object.entries(prev)) {
     if (!currentIds.has(id)) {
@@ -341,7 +239,6 @@ function detectChanges(newDeals) {
     }
   }
 
-  // Keep last 1000 entries
   const trimmed = changelog.slice(-1000);
   saveChangelog(trimmed);
   saveSnapshot(newDeals);
@@ -350,8 +247,6 @@ function detectChanges(newDeals) {
 
 // ── Data Refresh ──
 async function refreshData() {
-  await loadPipelineStages();
-  await loadOwners();
   const deals = await fetchAllDeals();
   detectChanges(deals);
   cachedDeals = deals;
@@ -366,19 +261,14 @@ app.get("/health", (req, res) => {
     status: "ok",
     lastRefresh,
     dealCount: cachedDeals.length,
-    hasToken: !!(HUBSPOT_ACCESS_TOKEN || HUBSPOT_PERSONAL_KEY),
+    configured: !!(FABRIC_SQL_SERVER && AZURE_CLIENT_ID),
   });
 });
 
 app.get("/api/deals", verifyAuth, (req, res) => {
-  // Filter to only our pipeline stages if requested
   const stageFilter = req.query.stage;
-  const pipelineOnly = req.query.pipeline !== "all";
   let deals = cachedDeals;
 
-  if (pipelineOnly && pipelineId) {
-    deals = deals.filter((d) => d.pipelineId === pipelineId);
-  }
   if (stageFilter) {
     deals = deals.filter(
       (d) => d.stage.toLowerCase() === stageFilter.toLowerCase()
@@ -394,9 +284,7 @@ app.get("/api/deals", verifyAuth, (req, res) => {
 });
 
 app.get("/api/pipeline", verifyAuth, (req, res) => {
-  const deals = pipelineId
-    ? cachedDeals.filter((d) => d.pipelineId === pipelineId)
-    : cachedDeals;
+  const deals = cachedDeals;
 
   const stages = STAGE_ORDER.map((name) => {
     const stageDeals = deals.filter(
@@ -410,7 +298,6 @@ app.get("/api/pipeline", verifyAuth, (req, res) => {
     };
   });
 
-  // Deals not in our tracked stages
   const trackedNames = new Set(STAGE_ORDER.map((s) => s.toLowerCase()));
   const other = deals.filter(
     (d) => !trackedNames.has(d.stage.toLowerCase())
@@ -440,6 +327,7 @@ app.get("/api/changelog", verifyAuth, (req, res) => {
 
 app.post("/api/refresh", verifyAuth, async (req, res) => {
   try {
+    pool = null; // Reset connection to get fresh token
     const deals = await refreshData();
     res.json({ success: true, count: deals.length, lastRefresh });
   } catch (e) {
@@ -456,15 +344,19 @@ app.use("/frontend", express.static(path.join(__dirname, "frontend")));
 // ── Startup ──
 app.listen(PORT, async () => {
   console.log(`[Server] Running on port ${PORT}`);
-  try {
-    await refreshData();
-  } catch (e) {
-    console.error("[Startup] Initial refresh failed:", e.message);
-    console.error("Set HUBSPOT_ACCESS_TOKEN or HUBSPOT_PERSONAL_KEY env var");
+  if (!FABRIC_SQL_SERVER || !AZURE_CLIENT_ID) {
+    console.error("[Startup] Missing env vars: FABRIC_SQL_SERVER, FABRIC_DATABASE, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET");
+  } else {
+    try {
+      await refreshData();
+    } catch (e) {
+      console.error("[Startup] Initial refresh failed:", e.message);
+    }
   }
   // Auto-refresh every 15 minutes
   setInterval(async () => {
     try {
+      pool = null; // Reset to get fresh Azure AD token
       await refreshData();
     } catch (e) {
       console.error("[Auto-refresh] Failed:", e.message);
