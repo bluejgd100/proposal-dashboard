@@ -2,7 +2,8 @@ const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const sql = require("mssql");
+const { Connection, Request } = require("tedious");
+const { ClientSecretCredential } = require("@azure/identity");
 
 const app = express();
 app.use(express.json());
@@ -72,40 +73,67 @@ function verifyAuth(req, res, next) {
 }
 
 // ── Fabric SQL Connection ──
-let pool = null;
+async function getAzureToken() {
+  const credential = new ClientSecretCredential(AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET);
+  const tokenResponse = await credential.getToken("https://database.windows.net/.default");
+  console.log("[Fabric] Azure AD token acquired");
+  return tokenResponse.token;
+}
 
-async function getConnection() {
-  if (pool && pool.connected) return pool;
-
-  const config = {
-    server: FABRIC_SQL_SERVER,
-    database: FABRIC_DATABASE,
-    port: 1433,
-    options: {
-      encrypt: true,
-      trustServerCertificate: false,
-      connectTimeout: 30000,
-      requestTimeout: 30000,
-    },
-    authentication: {
-      type: "azure-active-directory-service-principal-secret",
-      options: {
-        clientId: AZURE_CLIENT_ID,
-        clientSecret: AZURE_CLIENT_SECRET,
-        tenantId: AZURE_TENANT_ID,
+function createConnection(token) {
+  return new Promise((resolve, reject) => {
+    const config = {
+      server: FABRIC_SQL_SERVER,
+      authentication: {
+        type: "azure-active-directory-access-token",
+        options: { token },
       },
-    },
-  };
-
-  pool = await sql.connect(config);
-  console.log("[Fabric] Connected to SQL endpoint");
-  return pool;
+      options: {
+        database: FABRIC_DATABASE,
+        encrypt: true,
+        port: 1433,
+        connectTimeout: 60000,
+        requestTimeout: 60000,
+        rowCollectionOnDone: true,
+        rowCollectionOnRequestCompletion: true,
+      },
+    };
+    const connection = new Connection(config);
+    connection.on("connect", (err) => {
+      if (err) {
+        console.error("[Fabric] Connection error:", err.message);
+        reject(err);
+      } else {
+        console.log("[Fabric] Connected to SQL endpoint");
+        resolve(connection);
+      }
+    });
+    connection.connect();
+  });
 }
 
 async function queryFabric(query) {
-  const conn = await getConnection();
-  const result = await conn.request().query(query);
-  return result.recordset;
+  const token = await getAzureToken();
+  const connection = await createConnection(token);
+
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    const columns = [];
+    const request = new Request(query, (err, rowCount) => {
+      connection.close();
+      if (err) reject(err);
+      else resolve(rows);
+    });
+    request.on("columnMetadata", (cols) => {
+      for (const col of cols) columns.push(col.colName);
+    });
+    request.on("row", (row) => {
+      const obj = {};
+      row.forEach((col) => { obj[col.metadata.colName] = col.value; });
+      rows.push(obj);
+    });
+    connection.execSql(request);
+  });
 }
 
 // ── Pipeline Stage Config ──
@@ -328,7 +356,6 @@ app.get("/api/changelog", verifyAuth, (req, res) => {
 
 app.post("/api/refresh", verifyAuth, async (req, res) => {
   try {
-    pool = null; // Reset connection to get fresh token
     const deals = await refreshData();
     res.json({ success: true, count: deals.length, lastRefresh });
   } catch (e) {
@@ -357,7 +384,6 @@ app.listen(PORT, async () => {
   // Auto-refresh every 15 minutes
   setInterval(async () => {
     try {
-      pool = null; // Reset to get fresh Azure AD token
       await refreshData();
     } catch (e) {
       console.error("[Auto-refresh] Failed:", e.message);
