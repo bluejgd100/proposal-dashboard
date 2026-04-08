@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PINE Advisors — Proposal Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *:before, *:after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Inter, system-ui, sans-serif; background: #f0f4f8; color: #1a202c; min-height: 100vh; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #718096; border-radius: 4px; }
+::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 4px; }
+a { color: #2b6b3e; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Login */
+#login-overlay { position: fixed; inset: 0; background: #f0f4f8; display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.login-card { background: #fff; border-radius: 12px; padding: 48px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); text-align: center; max-width: 420px; width: 90%; }
+.login-card h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.login-card p { color: #718096; margin-bottom: 24px; font-size: 14px; }
+.login-card input { width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: Inter, system-ui, sans-serif; margin-bottom: 16px; }
+.login-card input:focus { outline: none; border-color: #2b6b3e; box-shadow: 0 0 0 3px rgba(43,107,62,0.1); }
+.login-card button { width: 100%; padding: 12px; background: #2b6b3e; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: Inter, system-ui, sans-serif; }
+.login-card button:hover { background: #224f2f; }
+.login-error { color: #c53030; font-size: 13px; margin-top: 8px; display: none; }
+
+/* Shell */
+.app { display: none; }
+.sidebar { position: fixed; left: 0; top: 0; width: 240px; height: 100vh; background: #1a202c; color: #e2e8f0; display: flex; flex-direction: column; z-index: 100; }
+.sidebar-brand { padding: 20px 20px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #2d3748; }
+.sidebar-brand .logo { width: 32px; height: 32px; background: #2b6b3e; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.sidebar-brand span { font-size: 14px; font-weight: 700; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 12px 0; }
+.nav-section { padding: 8px 20px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #718096; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13px; color: #a0aec0; cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent; }
+.nav-item:hover { background: #2d3748; color: #fff; }
+.nav-item.active { background: #2d3748; color: #fff; border-left-color: #2b6b3e; }
+.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-item .nav-badge { margin-left: auto; background: #2b6b3e; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid #2d3748; font-size: 12px; color: #718096; }
+.sidebar-footer .user-name { color: #e2e8f0; font-weight: 500; }
+
+.main { margin-left: 240px; min-height: 100vh; }
+.topbar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; }
+.topbar h2 { font-size: 16px; font-weight: 700; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+.topbar-actions .refresh-time { font-size: 11px; color: #718096; }
+.btn { padding: 7px 14px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: Inter, system-ui, sans-serif; transition: all 0.15s; }
+.btn-primary { background: #2b6b3e; color: #fff; }
+.btn-primary:hover { background: #224f2f; }
+.btn-secondary { background: #edf2f7; color: #4a5568; }
+.btn-secondary:hover { background: #e2e8f0; }
+
+.content { padding: 24px 28px; }
+
+/* Grids */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.g5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 20px; }
+.g7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 20px; }
+
+/* Cards */
+.card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 14px; color: #4a5568; text-transform: uppercase; letter-spacing: 0.3px; }
+.kpi { text-align: center; }
+.kpi .kpi-val { font-size: 26px; font-weight: 800; margin: 2px 0; }
+.kpi .kpi-label { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi .kpi-sub { font-size: 11px; color: #a0aec0; margin-top: 2px; }
+.kpi.green .kpi-val { color: #2b6b3e; }
+.kpi.red .kpi-val { color: #c53030; }
+.kpi.amber .kpi-val { color: #d97706; }
+.kpi.blue .kpi-val { color: #2b6cb0; }
+.clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { position: sticky; top: 0; text-align: left; padding: 8px 10px; background: #f7fafc; border-bottom: 2px solid #e2e8f0; font-weight: 600; color: #4a5568; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; cursor: pointer; user-select: none; z-index: 1; }
+thead th:hover { background: #edf2f7; }
+tbody td { padding: 8px 10px; border-bottom: 1px solid #f0f4f8; white-space: nowrap; }
+tbody tr:hover { background: #f7fafc; }
+
+/* Badges */
+.b { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.b-green { background: #e6f4ea; color: #1b7a3d; }
+.b-amber { background: #fef3c7; color: #92400e; }
+.b-red { background: #fee2e2; color: #991b1b; }
+.b-gray { background: #edf2f7; color: #4a5568; }
+.b-blue { background: #e0effe; color: #1e40af; }
+.b-purple { background: #f3e8ff; color: #6b21a8; }
+
+/* Search */
+.toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar input, .toolbar select { padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-family: Inter, system-ui, sans-serif; background: #fff; }
+.toolbar input:focus, .toolbar select:focus { outline: none; border-color: #2b6b3e; }
+.toolbar input { flex: 1; min-width: 180px; }
+
+/* Pipeline Board */
+.board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; min-height: 500px; }
+.board-col { background: #f7fafc; border-radius: 8px; padding: 12px; min-width: 0; }
+.board-col-header { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #4a5568; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+.board-col-header .col-count { background: #e2e8f0; color: #4a5568; font-size: 10px; padding: 1px 6px; border-radius: 10px; }
+.board-col-header .col-value { font-size: 10px; font-weight: 400; color: #718096; margin-top: 2px; }
+.board-col-meta { font-size: 10px; color: #718096; margin-bottom: 10px; }
+.deal-card { background: #fff; border-radius: 6px; padding: 10px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border-left: 3px solid #2b6b3e; cursor: pointer; transition: all 0.15s; }
+.deal-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.deal-card .dc-name { font-size: 12px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deal-card .dc-amount { font-size: 13px; font-weight: 700; color: #2b6b3e; }
+.deal-card .dc-meta { font-size: 10px; color: #718096; margin-top: 4px; display: flex; justify-content: space-between; }
+
+/* Funnel */
+.funnel { margin-bottom: 20px; }
+.funnel-row { display: flex; align-items: center; margin-bottom: 6px; }
+.funnel-label { width: 160px; font-size: 12px; font-weight: 600; color: #4a5568; text-align: right; padding-right: 12px; flex-shrink: 0; }
+.funnel-bar-wrap { flex: 1; height: 32px; background: #edf2f7; border-radius: 4px; overflow: hidden; position: relative; cursor: pointer; }
+.funnel-bar { height: 100%; background: #2b6b3e; border-radius: 4px; transition: width 0.5s ease; display: flex; align-items: center; padding-left: 8px; min-width: 2px; }
+.funnel-bar span { font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
+.funnel-val { width: 100px; font-size: 12px; font-weight: 600; padding-left: 10px; color: #4a5568; flex-shrink: 0; }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #e2e8f0; }
+.tl-item { position: relative; margin-bottom: 16px; padding-left: 16px; }
+.tl-item::before { content: ''; position: absolute; left: -20px; top: 4px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #2b6b3e; background: #fff; }
+.tl-item.stage-change::before { border-color: #2b6cb0; background: #e0effe; }
+.tl-item.new-deal::before { border-color: #2b6b3e; background: #e6f4ea; }
+.tl-item.removed::before { border-color: #c53030; background: #fee2e2; }
+.tl-date { font-size: 11px; font-weight: 600; color: #718096; margin-bottom: 2px; }
+.tl-title { font-size: 13px; font-weight: 500; }
+.tl-sub { font-size: 11px; color: #a0aec0; }
+
+/* Loading */
+.loading { text-align: center; padding: 60px; color: #718096; }
+.spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #2b6b3e; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Panel */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Responsive */
+@media (max-width: 1200px) { .board { grid-template-columns: repeat(4, 1fr); } .g7 { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 768px) {
+  .sidebar { width: 60px; } .sidebar-brand span, .nav-section, .nav-item span:not(.nav-icon), .nav-item .nav-badge, .sidebar-footer { display: none; }
+  .sidebar-brand { justify-content: center; padding: 16px 8px; } .nav-item { justify-content: center; padding: 12px 0; }
+  .main { margin-left: 60px; } .g2, .g3, .g4, .g5 { grid-template-columns: 1fr; } .board { grid-template-columns: 1fr 1fr; } .content { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="width:48px;height:48px;background:#2b6b3e;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:#fff;font-weight:700;font-size:20px;">P</div>
+    <h1>Proposal Pipeline</h1>
+    <p>Sign in with your credentials</p>
+    <input type="text" id="login-username" placeholder="Username" autofocus>
+    <input type="password" id="login-password" placeholder="Password">
+    <button onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error">Invalid username or password.</div>
+  </div>
+</div>
+
+<!-- App -->
+<div class="app" id="app">
+  <div class="sidebar">
+    <div class="sidebar-brand"><div class="logo">P</div><span>PINE Advisors</span></div>
+    <div class="sidebar-nav">
+      <div class="nav-section">Pipeline</div>
+      <div class="nav-item active" onclick="go('overview')"><span class="nav-icon">&#9632;</span><span>Overview</span></div>
+      <div class="nav-item" onclick="go('board')"><span class="nav-icon">&#9776;</span><span>Pipeline Board</span></div>
+      <div class="nav-item" onclick="go('deals')"><span class="nav-icon">&#128196;</span><span>All Deals</span></div>
+      <div class="nav-section">Tracking</div>
+      <div class="nav-item" onclick="go('activity')"><span class="nav-icon">&#8635;</span><span>Activity Log</span><span class="nav-badge" id="activity-count">0</span></div>
+    </div>
+    <div class="sidebar-footer">Signed in as<br><span class="user-name" id="sidebar-user"></span></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="page-title">Pipeline Overview</h2>
+      <div class="topbar-actions">
+        <span class="refresh-time" id="refresh-time"></span>
+        <button class="btn btn-primary" onclick="refreshAll()">&#8635; Refresh</button>
+        <button class="btn btn-secondary" onclick="doLogout()">Sign Out</button>
+      </div>
+    </div>
+    <div class="content" id="content">
+      <div class="loading"><div class="spinner"></div>Loading pipeline data...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const B = window.location.origin;
+let TK='', USR='', ROLE='', DATA={}, CHANGELOG=[];
+
+// ── Auth ──
+async function doLogin(){
+  const u=document.getElementById('login-username').value.trim();
+  const p=document.getElementById('login-password').value.trim();
+  if(!u||!p) return;
+  try{
+    const r=await fetch(B+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    if(!r.ok) throw 0;
+    const d=await r.json(); TK=d.token; USR=d.user; ROLE=d.role||'viewer';
+    sessionStorage.setItem('pt',TK); sessionStorage.setItem('pu',USR); sessionStorage.setItem('pr',ROLE);
+    enter();
+  }catch(e){ document.getElementById('login-error').style.display='block'; }
+}
+function enter(){
+  document.getElementById('login-overlay').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('sidebar-user').innerHTML=USR+' <span class="b '+(ROLE==='admin'?'b-green':'b-blue')+'" style="font-size:9px;margin-left:4px;">'+ROLE.toUpperCase()+'</span>';
+  refreshAll();
+}
+function doLogout(){ TK='';USR='';ROLE='';sessionStorage.clear(); document.getElementById('login-overlay').style.display='flex'; document.getElementById('app').style.display='none'; document.getElementById('login-error').style.display='none'; }
+document.getElementById('login-password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+(function(){ const t=sessionStorage.getItem('pt'),u=sessionStorage.getItem('pu'),r=sessionStorage.getItem('pr'); if(t){TK=t;USR=u||'';ROLE=r||'viewer';enter();}})();
+
+async function F(p){ const r=await fetch(B+p,{headers:{Authorization:'Bearer '+TK}}); if(r.status===401){doLogout();throw 0;} return r.json(); }
+
+async function refreshAll(){
+  document.getElementById('refresh-time').textContent='Loading...';
+  try{
+    const[pipeline,changelog]=await Promise.all([F('/api/pipeline'),F('/api/changelog')]);
+    DATA=pipeline; CHANGELOG=changelog.entries||[];
+    document.getElementById('activity-count').textContent=CHANGELOG.length;
+    document.getElementById('refresh-time').textContent='Updated '+new Date().toLocaleTimeString();
+    go(currentView||'overview');
+  }catch(e){ document.getElementById('refresh-time').textContent='Error'; console.error(e); }
+}
+
+async function doRefreshHubSpot(){
+  document.getElementById('refresh-time').textContent='Syncing HubSpot...';
+  try{
+    await fetch(B+'/api/refresh',{method:'POST',headers:{Authorization:'Bearer '+TK}});
+    await refreshAll();
+  }catch(e){ document.getElementById('refresh-time').textContent='Error'; }
+}
+
+// ── Navigation ──
+let currentView='overview';
+function go(v){
+  currentView=v;
+  document.querySelectorAll('.nav-item').forEach(n=>{n.classList.toggle('active',n.getAttribute('onclick')===`go('${v}')`)});
+  const titles={overview:'Pipeline Overview',board:'Pipeline Board',deals:'All Deals',activity:'Activity Log'};
+  document.getElementById('page-title').textContent=titles[v]||v;
+  const fn={overview:rOverview,board:rBoard,deals:rDeals,activity:rActivity};
+  if(fn[v]) fn[v]();
+}
+
+// ── Helpers ──
+function fmt$(v){const n=parseFloat(v)||0;if(Math.abs(n)>=1e6)return'$'+(n/1e6).toFixed(1)+'M';if(Math.abs(n)>=1e3)return'$'+(n/1e3).toFixed(0)+'K';return'$'+n.toLocaleString();}
+function fD(v){if(!v)return'\u2014';const d=new Date(v);return isNaN(d)?'\u2014':d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fDT(v){if(!v)return'\u2014';const d=new Date(v);return isNaN(d)?'\u2014':d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+function setContent(h){document.getElementById('content').innerHTML=h;}
+function stageColor(name){
+  const n=name.toLowerCase();
+  if(n.includes('service agreement')) return '#2b6b3e';
+  if(n.includes('follow up #3')) return '#1b7a3d';
+  if(n.includes('follow up #2')) return '#3d8b5e';
+  if(n.includes('follow up #1')) return '#4a9e6e';
+  if(n.includes('proposal sent')) return '#d97706';
+  if(n.includes('proposal build')) return '#2b6cb0';
+  if(n.includes('intro call')) return '#6b7280';
+  return '#718096';
+}
+function stageBadge(name){
+  const n=name.toLowerCase();
+  if(n.includes('service agreement')) return '<span class="b b-green">'+name+'</span>';
+  if(n.includes('follow up')) return '<span class="b b-amber">'+name+'</span>';
+  if(n.includes('proposal sent')) return '<span class="b b-blue">'+name+'</span>';
+  if(n.includes('proposal build')) return '<span class="b b-purple">'+name+'</span>';
+  if(n.includes('intro call')) return '<span class="b b-gray">'+name+'</span>';
+  return '<span class="b b-gray">'+name+'</span>';
+}
+function daysAgo(v){if(!v)return'';const d=Math.floor((Date.now()-new Date(v).getTime())/864e5);if(d===0)return'Today';if(d===1)return'Yesterday';return d+'d ago';}
+
+// ══════════════════════════════════════════
+// 1. OVERVIEW
+// ══════════════════════════════════════════
+function rOverview(){
+  const S=DATA.stages||[], total=DATA.totalDeals||0, totalVal=DATA.totalValue||0;
+  const maxCount=Math.max(...S.map(s=>s.count),1);
+  const saDeals=S.find(s=>s.name.toLowerCase().includes('service agreement'));
+  const saCount=saDeals?saDeals.count:0;
+  const saValue=saDeals?saDeals.totalValue:0;
+  const recentChanges=CHANGELOG.filter(c=>c.type==='stage_change').slice(0,5);
+
+  setContent(`
+    <div class="g5" style="margin-bottom:20px;">
+      <div class="card kpi"><div class="kpi-label">Total Deals</div><div class="kpi-val">${total}</div><div class="kpi-sub">In pipeline</div></div>
+      <div class="card kpi blue"><div class="kpi-label">Pipeline Value</div><div class="kpi-val">${fmt$(totalVal)}</div><div class="kpi-sub">All stages</div></div>
+      <div class="card kpi green"><div class="kpi-label">Service Agreements</div><div class="kpi-val">${saCount}</div><div class="kpi-sub">${fmt$(saValue)}</div></div>
+      <div class="card kpi amber"><div class="kpi-label">Avg Deal Value</div><div class="kpi-val">${total?fmt$(totalVal/total):'\u2014'}</div><div class="kpi-sub">Per deal</div></div>
+      <div class="card kpi"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${CHANGELOG.filter(c=>c.type==='stage_change').length}</div><div class="kpi-sub">Tracked</div></div>
+    </div>
+
+    <div class="g2">
+      <div class="card">
+        <h3>Pipeline Funnel</h3>
+        <div class="funnel" id="funnel"></div>
+      </div>
+      <div class="card">
+        <h3>Stage Values</h3>
+        <div class="funnel" id="value-funnel"></div>
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="card">
+        <h3>Deals by Stage</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Stage</th><th>Deals</th><th>Total Value</th><th>Avg Value</th></tr></thead>
+            <tbody>
+              ${S.map(s=>`<tr><td>${stageBadge(s.name)}</td><td>${s.count}</td><td>${fmt$(s.totalValue)}</td><td>${s.count?fmt$(s.totalValue/s.count):'\u2014'}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Recent Activity</h3>
+        ${recentChanges.length?`<div class="timeline">${recentChanges.map(c=>`
+          <div class="tl-item ${c.type==='stage_change'?'stage-change':c.type==='new_deal'?'new-deal':'removed'}">
+            <div class="tl-date">${fDT(c.timestamp)}</div>
+            <div class="tl-title">${c.dealName}</div>
+            <div class="tl-sub">${c.type==='stage_change'?c.fromStage+' &#8594; '+c.toStage:c.type==='new_deal'?'New deal added to '+c.toStage:'Removed from pipeline'} ${c.amount?'&middot; '+fmt$(c.amount):''}</div>
+          </div>
+        `).join('')}</div>`:'<p style="color:#718096;font-size:13px;padding:20px 0;">No activity recorded yet. Changes will appear after the next data refresh.</p>'}
+      </div>
+    </div>
+  `);
+
+  // Render count funnel
+  const funnelEl=document.getElementById('funnel');
+  funnelEl.innerHTML=S.map(s=>{
+    const pct=Math.max((s.count/maxCount)*100,2);
+    return `<div class="funnel-row">
+      <div class="funnel-label">${s.name}</div>
+      <div class="funnel-bar-wrap" onclick="go('board')">
+        <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${s.count}</span></div>
+      </div>
+      <div class="funnel-val">${s.count} deal${s.count!==1?'s':''}</div>
+    </div>`;
+  }).join('');
+
+  // Render value funnel
+  const maxVal=Math.max(...S.map(s=>s.totalValue),1);
+  const vfEl=document.getElementById('value-funnel');
+  vfEl.innerHTML=S.map(s=>{
+    const pct=Math.max((s.totalValue/maxVal)*100,2);
+    return `<div class="funnel-row">
+      <div class="funnel-label">${s.name}</div>
+      <div class="funnel-bar-wrap">
+        <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${fmt$(s.totalValue)}</span></div>
+      </div>
+      <div class="funnel-val">${fmt$(s.totalValue)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// 2. PIPELINE BOARD (Kanban)
+// ══════════════════════════════════════════
+function rBoard(){
+  const S=DATA.stages||[];
+  setContent(`
+    <div class="toolbar">
+      <input type="text" id="board-search" placeholder="Search deals..." oninput="filterBoard()">
+    </div>
+    <div class="board" id="board">
+      ${S.map(s=>`
+        <div class="board-col" data-stage="${s.name}">
+          <div class="board-col-header">
+            <span>${s.name}</span>
+            <span class="col-count">${s.count}</span>
+          </div>
+          <div class="board-col-meta">${fmt$(s.totalValue)}</div>
+          <div class="board-deals" data-stage="${s.name}">
+            ${s.deals.map(d=>`
+              <div class="deal-card" onclick="window.open('https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}','_blank')" title="Open in HubSpot">
+                <div class="dc-name">${d.name}</div>
+                <div class="dc-amount">${d.amount?fmt$(d.amount):'\u2014'}</div>
+                <div class="dc-meta">
+                  <span>${d.ownerName}</span>
+                  <span>${daysAgo(d.lastModified)}</span>
+                </div>
+              </div>
+            `).join('')}
+            ${s.deals.length===0?'<div style="text-align:center;color:#a0aec0;font-size:11px;padding:20px 0;">No deals</div>':''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `);
+}
+
+function filterBoard(){
+  const q=(document.getElementById('board-search')?.value||'').toLowerCase();
+  document.querySelectorAll('.deal-card').forEach(c=>{
+    const name=c.querySelector('.dc-name')?.textContent.toLowerCase()||'';
+    c.style.display=(!q||name.includes(q))?'':'none';
+  });
+}
+
+// ══════════════════════════════════════════
+// 3. ALL DEALS (Table)
+// ══════════════════════════════════════════
+let dealSort={col:'name',dir:1};
+function rDeals(){
+  const allDeals=[];
+  for(const s of DATA.stages||[]) allDeals.push(...s.deals);
+  if(DATA.other) allDeals.push(...(DATA.other.deals||[]));
+
+  setContent(`
+    <div class="toolbar">
+      <input type="text" id="deal-search" placeholder="Search deals by name, owner, stage..." oninput="rDealsTable()">
+      <select id="deal-stage-filter" onchange="rDealsTable()">
+        <option value="">All Stages</option>
+        ${(DATA.stages||[]).map(s=>`<option value="${s.name}">${s.name} (${s.count})</option>`).join('')}
+      </select>
+    </div>
+    <div class="card"><div class="tbl-wrap"><table id="deals-table">
+      <thead><tr>
+        <th onclick="sortDeals('name')">Deal Name</th>
+        <th onclick="sortDeals('amount')">Amount</th>
+        <th onclick="sortDeals('stage')">Stage</th>
+        <th onclick="sortDeals('ownerName')">Owner</th>
+        <th onclick="sortDeals('createDate')">Created</th>
+        <th onclick="sortDeals('lastModified')">Last Modified</th>
+      </tr></thead>
+      <tbody id="deals-tbody"></tbody>
+    </table></div></div>
+  `);
+  window._allDeals=allDeals;
+  rDealsTable();
+}
+
+function rDealsTable(){
+  const q=(document.getElementById('deal-search')?.value||'').toLowerCase();
+  const sf=document.getElementById('deal-stage-filter')?.value||'';
+  let deals=(window._allDeals||[]).filter(d=>{
+    if(sf&&d.stage!==sf) return false;
+    if(q&&!d.name.toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)&&!d.stage.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  deals.sort((a,b)=>{
+    const va=a[dealSort.col]||'', vb=b[dealSort.col]||'';
+    if(typeof va==='number') return (va-vb)*dealSort.dir;
+    return String(va).localeCompare(String(vb))*dealSort.dir;
+  });
+  const tbody=document.getElementById('deals-tbody');
+  if(!tbody) return;
+  tbody.innerHTML=deals.map(d=>`
+    <tr>
+      <td><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}" target="_blank" title="Open in HubSpot">${d.name}</a></td>
+      <td style="font-weight:600;">${d.amount?fmt$(d.amount):'\u2014'}</td>
+      <td>${stageBadge(d.stage)}</td>
+      <td>${d.ownerName}</td>
+      <td>${fD(d.createDate)}</td>
+      <td>${fD(d.lastModified)}</td>
+    </tr>
+  `).join('');
+}
+
+function sortDeals(col){
+  if(dealSort.col===col) dealSort.dir*=-1; else { dealSort.col=col; dealSort.dir=1; }
+  rDealsTable();
+}
+
+// ══════════════════════════════════════════
+// 4. ACTIVITY LOG
+// ══════════════════════════════════════════
+function rActivity(){
+  const entries=CHANGELOG||[];
+  const stageChanges=entries.filter(c=>c.type==='stage_change');
+  const newDeals=entries.filter(c=>c.type==='new_deal');
+
+  setContent(`
+    <div class="g3" style="margin-bottom:20px;">
+      <div class="card kpi"><div class="kpi-label">Total Events</div><div class="kpi-val">${entries.length}</div></div>
+      <div class="card kpi blue"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${stageChanges.length}</div></div>
+      <div class="card kpi green"><div class="kpi-label">New Deals</div><div class="kpi-val">${newDeals.length}</div></div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="log-search" placeholder="Search activity..." oninput="filterLog()">
+      <select id="log-type" onchange="filterLog()">
+        <option value="">All Events</option>
+        <option value="stage_change">Stage Changes</option>
+        <option value="new_deal">New Deals</option>
+        <option value="deal_removed">Removed</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="timeline" id="log-timeline">
+        ${entries.length?entries.map(c=>`
+          <div class="tl-item ${c.type==='stage_change'?'stage-change':c.type==='new_deal'?'new-deal':'removed'}" data-type="${c.type}" data-name="${(c.dealName||'').toLowerCase()}">
+            <div class="tl-date">${fDT(c.timestamp)}</div>
+            <div class="tl-title">
+              <a href="https://app.hubspot.com/contacts/45669656/record/0-3/${c.dealId}" target="_blank">${c.dealName}</a>
+              ${c.amount?' &middot; <strong>'+fmt$(c.amount)+'</strong>':''}
+            </div>
+            <div class="tl-sub">
+              ${c.type==='stage_change'?stageBadge(c.fromStage)+' &#8594; '+stageBadge(c.toStage):''}
+              ${c.type==='new_deal'?'New deal added to '+stageBadge(c.toStage):''}
+              ${c.type==='deal_removed'?'<span class="b b-red">Removed</span> from '+stageBadge(c.fromStage):''}
+            </div>
+          </div>
+        `).join(''):'<p style="color:#718096;font-size:13px;padding:20px 0;">No activity recorded yet. The log captures deal stage changes between data refreshes. Changes will appear after the next sync.</p>'}
+      </div>
+    </div>
+  `);
+}
+
+function filterLog(){
+  const q=(document.getElementById('log-search')?.value||'').toLowerCase();
+  const t=document.getElementById('log-type')?.value||'';
+  document.querySelectorAll('#log-timeline .tl-item').forEach(el=>{
+    const type=el.dataset.type, name=el.dataset.name||'';
+    const show=(!t||type===t)&&(!q||name.includes(q));
+    el.style.display=show?'':'none';
+  });
+}
+</script>
+</body>
+</html>
