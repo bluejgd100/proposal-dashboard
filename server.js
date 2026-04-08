@@ -3,7 +3,6 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const sql = require("mssql");
-const { ClientSecretCredential } = require("@azure/identity");
 
 const app = express();
 app.use(express.json());
@@ -78,20 +77,22 @@ let pool = null;
 async function getConnection() {
   if (pool && pool.connected) return pool;
 
-  const credential = new ClientSecretCredential(AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET);
-  const tokenResponse = await credential.getToken("https://database.windows.net/.default");
-
   const config = {
     server: FABRIC_SQL_SERVER,
     database: FABRIC_DATABASE,
+    port: 1433,
     options: {
       encrypt: true,
       trustServerCertificate: false,
+      connectTimeout: 30000,
+      requestTimeout: 30000,
     },
     authentication: {
-      type: "azure-active-directory-access-token",
+      type: "azure-active-directory-service-principal-secret",
       options: {
-        token: tokenResponse.token,
+        clientId: AZURE_CLIENT_ID,
+        clientSecret: AZURE_CLIENT_SECRET,
+        tenantId: AZURE_TENANT_ID,
       },
     },
   };
