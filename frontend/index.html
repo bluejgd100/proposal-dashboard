@@ -144,6 +144,20 @@ tbody tr:hover { background: #f7fafc; }
 .panel { display: none; }
 .panel.active { display: block; }
 
+/* Multi-select */
+.msel { position: relative; display: inline-block; }
+.msel-btn { padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-family: Inter, system-ui, sans-serif; background: #fff; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.msel-btn:hover { border-color: #2b6b3e; }
+.msel-btn .msel-count { background: #2b6b3e; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+.msel-drop { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 50; min-width: 220px; max-height: 260px; overflow-y: auto; padding: 6px 0; }
+.msel-drop.open { display: block; }
+.msel-drop label { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.msel-drop label:hover { background: #f7fafc; }
+.msel-drop input[type=checkbox] { accent-color: #2b6b3e; }
+.msel-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.msel-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #edf2f7; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.msel-pill .pill-x { cursor: pointer; color: #718096; font-weight: 700; }
+
 /* Responsive */
 @media (max-width: 1200px) { .board { grid-template-columns: repeat(4, 1fr); } .g7 { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 768px) {
@@ -468,13 +482,24 @@ function filterBoard(){
 // ══════════════════════════════════════════
 // 2b. PIPELINE TABLE (Click-through target)
 // ══════════════════════════════════════════
-let ptableStageFilter='', ptableBlFilter='', ptableMonthFilter='';
+let ptableStageFilters=[], ptableBlFilters=[], ptableMonthFilter='';
 let ptableSort={col:'name',dir:1};
 
-function goToStage(stageName){ ptableStageFilter=stageName; ptableBlFilter=''; ptableMonthFilter=''; go('ptable'); }
-function goToStageBl(stageName,bl){ ptableStageFilter=stageName; ptableBlFilter=bl; ptableMonthFilter=''; go('ptable'); }
-function goToBl(bl){ ptableBlFilter=bl; ptableStageFilter=''; ptableMonthFilter=''; go('ptable'); }
-function goToMonth(monthKey){ ptableMonthFilter=monthKey; ptableStageFilter=''; ptableBlFilter=''; go('ptable'); }
+function goToStage(stageName){ ptableStageFilters=[stageName]; ptableBlFilters=[]; ptableMonthFilter=''; go('ptable'); }
+function goToStageBl(stageName,bl){ ptableStageFilters=[stageName]; ptableBlFilters=[bl]; ptableMonthFilter=''; go('ptable'); }
+function goToBl(bl){ ptableBlFilters=[bl]; ptableStageFilters=[]; ptableMonthFilter=''; go('ptable'); }
+function goToMonth(monthKey){ ptableMonthFilter=monthKey; ptableStageFilters=[]; ptableBlFilters=[]; go('ptable'); }
+
+function toggleMsel(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const isOpen=el.classList.contains('open');
+  document.querySelectorAll('.msel-drop').forEach(d=>d.classList.remove('open'));
+  if(!isOpen) el.classList.add('open');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.msel')) document.querySelectorAll('.msel-drop').forEach(d=>d.classList.remove('open'));
+});
 
 function rPipelineTable(){
   const allDeals=[];
@@ -491,22 +516,29 @@ function rPipelineTable(){
   });
   const months=Array.from(monthSet).sort();
 
+  const stageCount=ptableStageFilters.length, blCount=ptableBlFilters.length;
+
   setContent(`
     <div class="toolbar">
       <input type="text" id="pt-search" placeholder="Search deals..." oninput="filterPTable()">
-      <select id="pt-stage-filter" onchange="filterPTable()">
-        <option value="">All Stages</option>
-        ${(DATA.stages||[]).map(s=>`<option value="${s.name}" ${s.name===ptableStageFilter?'selected':''}>${s.name} (${s.count})</option>`).join('')}
-      </select>
-      <select id="pt-bl-filter" onchange="filterPTable()">
-        <option value="">All Business Lines</option>
-        ${BUSINESS_LINES.map(bl=>`<option value="${bl}" ${bl===ptableBlFilter?'selected':''}>${bl}</option>`).join('')}
-      </select>
+      <div class="msel">
+        <div class="msel-btn" onclick="toggleMsel('pt-stage-drop')">Stages ${stageCount?'<span class="msel-count">'+stageCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
+        <div class="msel-drop" id="pt-stage-drop">
+          ${(DATA.stages||[]).map(s=>`<label><input type="checkbox" value="${s.name}" ${ptableStageFilters.includes(s.name)?'checked':''} onchange="filterPTable()">${s.name} (${s.count})</label>`).join('')}
+        </div>
+      </div>
+      <div class="msel">
+        <div class="msel-btn" onclick="toggleMsel('pt-bl-drop')">Business Lines ${blCount?'<span class="msel-count">'+blCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
+        <div class="msel-drop" id="pt-bl-drop">
+          ${BUSINESS_LINES.map(bl=>`<label><input type="checkbox" value="${bl}" ${ptableBlFilters.includes(bl)?'checked':''} onchange="filterPTable()">${bl}</label>`).join('')}
+        </div>
+      </div>
       <select id="pt-month-filter" onchange="filterPTable()">
         <option value="">All Close Months</option>
         ${months.map(m=>{const label=new Date(m+'-01').toLocaleDateString('en-US',{month:'short',year:'numeric'});return `<option value="${m}" ${m===ptableMonthFilter?'selected':''}>${label}</option>`;}).join('')}
       </select>
     </div>
+    <div class="msel-pills" id="pt-pills"></div>
     <div class="card"><div class="tbl-wrap"><table>
       <thead><tr>
         <th onclick="sortPTable('name')">Deal Name</th>
@@ -525,16 +557,32 @@ function rPipelineTable(){
   filterPTable();
 }
 
+function getPtChecked(dropId){
+  return Array.from(document.querySelectorAll('#'+dropId+' input:checked')).map(c=>c.value);
+}
+function removePtFilter(type,val){
+  if(type==='stage') ptableStageFilters=ptableStageFilters.filter(v=>v!==val);
+  if(type==='bl') ptableBlFilters=ptableBlFilters.filter(v=>v!==val);
+  rPipelineTable();
+}
+
 function filterPTable(){
   const q=(document.getElementById('pt-search')?.value||'').toLowerCase();
-  const sf=document.getElementById('pt-stage-filter')?.value||'';
-  const bf=document.getElementById('pt-bl-filter')?.value||'';
+  const stages=getPtChecked('pt-stage-drop');
+  const bls=getPtChecked('pt-bl-drop');
   const mf=document.getElementById('pt-month-filter')?.value||'';
-  ptableStageFilter=sf; ptableBlFilter=bf; ptableMonthFilter=mf;
+  ptableStageFilters=stages; ptableBlFilters=bls; ptableMonthFilter=mf;
+
+  // Render pills
+  const pillsEl=document.getElementById('pt-pills');
+  if(pillsEl){
+    pillsEl.innerHTML=stages.map(s=>`<span class="msel-pill" style="border-left:3px solid ${stageColor(s)}">${s} <span class="pill-x" onclick="removePtFilter('stage','${s}')">&times;</span></span>`).join('')
+      +bls.map(b=>`<span class="msel-pill" style="border-left:3px solid #2b6b3e">${b} <span class="pill-x" onclick="removePtFilter('bl','${b}')">&times;</span></span>`).join('');
+  }
 
   let deals=(window._ptDeals||[]).filter(d=>{
-    if(sf&&d.stage!==sf) return false;
-    if(bf&&!(d.linesOfBusiness||'').toLowerCase().includes(bf.toLowerCase())) return false;
+    if(stages.length&&!stages.includes(d.stage)) return false;
+    if(bls.length){const dl=(d.linesOfBusiness||'').toLowerCase();if(!bls.some(b=>dl.includes(b.toLowerCase()))) return false;}
     if(mf){
       if(!d.closeDate) return false;
       const cd=new Date(d.closeDate);
