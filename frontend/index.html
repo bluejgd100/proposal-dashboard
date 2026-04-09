@@ -296,26 +296,57 @@ function daysAgo(v){if(!v)return'';const d=Math.floor((Date.now()-new Date(v).ge
 // ══════════════════════════════════════════
 // 1. OVERVIEW
 // ══════════════════════════════════════════
+let overviewBlFilter='';
+
 function rOverview(){
-  const S=DATA.stages||[], total=DATA.totalDeals||0, totalVal=DATA.totalValue||0;
+  const bf=overviewBlFilter;
+  const bfLower=bf.toLowerCase();
+
+  // Filter deals per stage by BL
+  const S=(DATA.stages||[]).map(s=>{
+    if(!bf) return s;
+    const filtered=s.deals.filter(d=>(d.linesOfBusiness||'').toLowerCase().includes(bfLower));
+    return {name:s.name, count:filtered.length, totalValue:filtered.reduce((sum,d)=>sum+d.amount,0), deals:filtered};
+  });
+
+  const total=S.reduce((sum,s)=>sum+s.count,0);
+  const totalVal=S.reduce((sum,s)=>sum+s.totalValue,0);
   const maxCount=Math.max(...S.map(s=>s.count),1);
-  const saDeals=S.find(s=>s.name.toLowerCase().includes('service agreement'));
-  const saCount=saDeals?saDeals.count:0;
-  const saValue=saDeals?saDeals.totalValue:0;
+  const saStage=S.find(s=>s.name.toLowerCase().includes('service agreement'));
+  const saCount=saStage?saStage.count:0;
+  const saValue=saStage?saStage.totalValue:0;
+
+  // Recent activity: hot stages, last 10 days, filtered by BL
   const tenDaysAgo=Date.now()-10*864e5;
   const recentChanges=CHANGELOG.filter(c=>{
     if(c.type!=='stage_change') return false;
     if(new Date(c.timestamp).getTime()<tenDaysAgo) return false;
-    return isHotStage(c.fromStage)||isHotStage(c.toStage);
+    if(!(isHotStage(c.fromStage)||isHotStage(c.toStage))) return false;
+    if(bf){ const bl=getDealBl(c.dealId).toLowerCase(); if(!bl.includes(bfLower)) return false; }
+    return true;
   }).slice(0,20);
 
+  // Click-through helper: passes current BL filter
+  const clickStage=s=>bf?`goToStageBl('${s.name}','${bf}')`:`goToStage('${s.name}')`;
+  const clickSA=bf?`goToStageBl('Service Agreement','${bf}')`:`goToStage('Service Agreement')`;
+
+  const blLabel=bf||'All';
+
   setContent(`
+    <div class="toolbar" style="margin-bottom:16px;">
+      <select id="overview-bl" onchange="overviewBlFilter=this.value;rOverview()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}" ${bl===bf?'selected':''}>${bl}</option>`).join('')}
+      </select>
+      ${bf?'<span style="font-size:12px;color:#4a5568;align-self:center;">Showing: <strong>'+bf+'</strong></span>':''}
+    </div>
+
     <div class="g5" style="margin-bottom:20px;">
-      <div class="card kpi"><div class="kpi-label">Total Deals</div><div class="kpi-val">${total}</div><div class="kpi-sub">In pipeline</div></div>
-      <div class="card kpi blue"><div class="kpi-label">Pipeline Value</div><div class="kpi-val">${fmt$(totalVal)}</div><div class="kpi-sub">All stages</div></div>
-      <div class="card kpi green clickable" onclick="goToStage('Service Agreement')"><div class="kpi-label">Service Agreements</div><div class="kpi-val">${saCount}</div><div class="kpi-sub">${fmt$(saValue)}</div></div>
+      <div class="card kpi"><div class="kpi-label">Total Deals</div><div class="kpi-val">${total}</div><div class="kpi-sub">${blLabel}</div></div>
+      <div class="card kpi blue"><div class="kpi-label">Pipeline Value</div><div class="kpi-val">${fmt$(totalVal)}</div><div class="kpi-sub">${blLabel}</div></div>
+      <div class="card kpi green clickable" onclick="${clickSA}"><div class="kpi-label">Service Agreements</div><div class="kpi-val">${saCount}</div><div class="kpi-sub">${fmt$(saValue)}</div></div>
       <div class="card kpi amber"><div class="kpi-label">Avg Deal Value</div><div class="kpi-val">${total?fmt$(totalVal/total):'\u2014'}</div><div class="kpi-sub">Per deal</div></div>
-      <div class="card kpi"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${CHANGELOG.filter(c=>c.type==='stage_change').length}</div><div class="kpi-sub">Tracked</div></div>
+      <div class="card kpi"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${recentChanges.length}</div><div class="kpi-sub">Last 10 days</div></div>
     </div>
 
     <div class="g2">
@@ -336,7 +367,7 @@ function rOverview(){
           <table>
             <thead><tr><th>Stage</th><th>Deals</th><th>Total Value</th><th>Avg Value</th></tr></thead>
             <tbody>
-              ${S.map(s=>`<tr style="cursor:pointer" onclick="goToStage('${s.name}')"><td>${stageBadge(s.name)}</td><td>${s.count}</td><td>${fmt$(s.totalValue)}</td><td>${s.count?fmt$(s.totalValue/s.count):'\u2014'}</td></tr>`).join('')}
+              ${S.map(s=>`<tr style="cursor:pointer" onclick="${clickStage(s)}"><td>${stageBadge(s.name)}</td><td>${s.count}</td><td>${fmt$(s.totalValue)}</td><td>${s.count?fmt$(s.totalValue/s.count):'\u2014'}</td></tr>`).join('')}
             </tbody>
           </table>
         </div>
@@ -346,10 +377,10 @@ function rOverview(){
         ${recentChanges.length?`<div class="timeline">${recentChanges.map(c=>`
           <div class="tl-item ${c.type==='stage_change'?'stage-change':c.type==='new_deal'?'new-deal':'removed'}">
             <div class="tl-date">${fDT(c.timestamp)}</div>
-            <div class="tl-title">${c.dealName}</div>
-            <div class="tl-sub">${c.type==='stage_change'?c.fromStage+' &#8594; '+c.toStage:c.type==='new_deal'?'New deal added to '+c.toStage:'Removed from pipeline'} ${c.amount?'&middot; '+fmt$(c.amount):''}</div>
+            <div class="tl-title"><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${c.dealId}" target="_blank">${c.dealName}</a></div>
+            <div class="tl-sub">${c.type==='stage_change'?stageBadge(c.fromStage)+' &#8594; '+stageBadge(c.toStage):c.type==='new_deal'?'New deal added to '+stageBadge(c.toStage):'Removed from pipeline'} ${c.amount?'&middot; '+fmt$(c.amount):''}</div>
           </div>
-        `).join('')}</div>`:'<p style="color:#718096;font-size:13px;padding:20px 0;">No activity recorded yet. Changes will appear after the next data refresh.</p>'}
+        `).join('')}</div>`:'<p style="color:#718096;font-size:13px;padding:20px 0;">No hot-stage activity recorded${bf?' for '+bf:''}. Changes will appear after the next data refresh.</p>'}
       </div>
     </div>
   `);
@@ -360,7 +391,7 @@ function rOverview(){
     const pct=Math.max((s.count/maxCount)*100,2);
     return `<div class="funnel-row">
       <div class="funnel-label">${s.name}</div>
-      <div class="funnel-bar-wrap" onclick="goToStage('${s.name}')">
+      <div class="funnel-bar-wrap" onclick="${clickStage(s)}">
         <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${s.count}</span></div>
       </div>
       <div class="funnel-val">${s.count} deal${s.count!==1?'s':''}</div>
@@ -374,7 +405,7 @@ function rOverview(){
     const pct=Math.max((s.totalValue/maxVal)*100,2);
     return `<div class="funnel-row">
       <div class="funnel-label">${s.name}</div>
-      <div class="funnel-bar-wrap" onclick="goToStage('${s.name}')">
+      <div class="funnel-bar-wrap" onclick="${clickStage(s)}">
         <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${fmt$(s.totalValue)}</span></div>
       </div>
       <div class="funnel-val">${fmt$(s.totalValue)}</div>
@@ -437,16 +468,28 @@ function filterBoard(){
 // ══════════════════════════════════════════
 // 2b. PIPELINE TABLE (Click-through target)
 // ══════════════════════════════════════════
-let ptableStageFilter='', ptableBlFilter='';
+let ptableStageFilter='', ptableBlFilter='', ptableMonthFilter='';
 let ptableSort={col:'name',dir:1};
 
-function goToStage(stageName){ ptableStageFilter=stageName; go('ptable'); }
-function goToBl(bl){ ptableBlFilter=bl; ptableStageFilter=''; go('ptable'); }
+function goToStage(stageName){ ptableStageFilter=stageName; ptableBlFilter=''; ptableMonthFilter=''; go('ptable'); }
+function goToStageBl(stageName,bl){ ptableStageFilter=stageName; ptableBlFilter=bl; ptableMonthFilter=''; go('ptable'); }
+function goToBl(bl){ ptableBlFilter=bl; ptableStageFilter=''; ptableMonthFilter=''; go('ptable'); }
+function goToMonth(monthKey){ ptableMonthFilter=monthKey; ptableStageFilter=''; ptableBlFilter=''; go('ptable'); }
 
 function rPipelineTable(){
   const allDeals=[];
   for(const s of DATA.stages||[]) allDeals.push(...s.deals);
   if(DATA.other) allDeals.push(...(DATA.other.deals||[]));
+
+  // Build unique months from close dates
+  const monthSet=new Set();
+  allDeals.forEach(d=>{
+    if(!d.closeDate) return;
+    const cd=new Date(d.closeDate);
+    if(isNaN(cd)) return;
+    monthSet.add(cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0'));
+  });
+  const months=Array.from(monthSet).sort();
 
   setContent(`
     <div class="toolbar">
@@ -458,6 +501,10 @@ function rPipelineTable(){
       <select id="pt-bl-filter" onchange="filterPTable()">
         <option value="">All Business Lines</option>
         ${BUSINESS_LINES.map(bl=>`<option value="${bl}" ${bl===ptableBlFilter?'selected':''}>${bl}</option>`).join('')}
+      </select>
+      <select id="pt-month-filter" onchange="filterPTable()">
+        <option value="">All Close Months</option>
+        ${months.map(m=>{const label=new Date(m+'-01').toLocaleDateString('en-US',{month:'short',year:'numeric'});return `<option value="${m}" ${m===ptableMonthFilter?'selected':''}>${label}</option>`;}).join('')}
       </select>
     </div>
     <div class="card"><div class="tbl-wrap"><table>
@@ -482,11 +529,19 @@ function filterPTable(){
   const q=(document.getElementById('pt-search')?.value||'').toLowerCase();
   const sf=document.getElementById('pt-stage-filter')?.value||'';
   const bf=document.getElementById('pt-bl-filter')?.value||'';
-  ptableStageFilter=sf; ptableBlFilter=bf;
+  const mf=document.getElementById('pt-month-filter')?.value||'';
+  ptableStageFilter=sf; ptableBlFilter=bf; ptableMonthFilter=mf;
 
   let deals=(window._ptDeals||[]).filter(d=>{
     if(sf&&d.stage!==sf) return false;
     if(bf&&!(d.linesOfBusiness||'').toLowerCase().includes(bf.toLowerCase())) return false;
+    if(mf){
+      if(!d.closeDate) return false;
+      const cd=new Date(d.closeDate);
+      if(isNaN(cd)) return false;
+      const dk=cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0');
+      if(dk!==mf) return false;
+    }
     if(q&&!d.name.toLowerCase().includes(q)&&!(d.clientCompany||'').toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -793,10 +848,7 @@ function filterCapacity(){
 }
 
 function filterCapMonth(monthKey){
-  // Navigate to pipeline table filtered to deals closing in that month
-  // We'll use a workaround: just go to ptable and show all hot stages
-  ptableStageFilter=''; ptableBlFilter='';
-  go('ptable');
+  goToMonth(monthKey);
 }
 </script>
 </body>
