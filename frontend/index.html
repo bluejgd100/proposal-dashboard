@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PINE — Proposal Pipeline</title>
+<title>PINE — Sales Pipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -159,7 +159,7 @@ tbody tr:hover { background: #f7fafc; }
 <div id="login-overlay">
   <div class="login-card">
     <div style="width:48px;height:48px;background:#2b6b3e;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:#fff;font-weight:700;font-size:20px;">P</div>
-    <h1>Proposal Pipeline</h1>
+    <h1>Sales Pipeline</h1>
     <p>Sign in with your credentials</p>
     <input type="text" id="login-username" placeholder="Username" autofocus>
     <input type="password" id="login-password" placeholder="Password">
@@ -380,7 +380,7 @@ function rOverview(){
             <div class="tl-title"><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${c.dealId}" target="_blank">${c.dealName}</a></div>
             <div class="tl-sub">${c.type==='stage_change'?stageBadge(c.fromStage)+' &#8594; '+stageBadge(c.toStage):c.type==='new_deal'?'New deal added to '+stageBadge(c.toStage):'Removed from pipeline'} ${c.amount?'&middot; '+fmt$(c.amount):''}</div>
           </div>
-        `).join('')}</div>`:'<p style="color:#718096;font-size:13px;padding:20px 0;">No hot-stage activity recorded${bf?' for '+bf:''}. Changes will appear after the next data refresh.</p>'}
+        `).join('')}</div>`:`<p style="color:#718096;font-size:13px;padding:20px 0;">No hot-stage activity recorded${bf?' for '+bf:''}. Changes will appear after the next data refresh.</p>`}
       </div>
     </div>
   `);
