@@ -149,11 +149,11 @@ tbody tr:hover { background: #f7fafc; }
 .msel-btn { padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-family: Inter, system-ui, sans-serif; background: #fff; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
 .msel-btn:hover { border-color: #2b6b3e; }
 .msel-btn .msel-count { background: #2b6b3e; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
-.msel-drop { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 50; min-width: 220px; max-height: 260px; overflow-y: auto; padding: 6px 0; }
+.msel-drop { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 50; min-width: 240px; max-height: 300px; overflow-y: auto; padding: 4px; }
 .msel-drop.open { display: block; }
-.msel-drop label { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.msel-drop label:hover { background: #f7fafc; }
-.msel-drop input[type=checkbox] { accent-color: #2b6b3e; }
+.msel-opt { padding: 5px 10px; font-size: 12px; cursor: pointer; border-radius: 4px; white-space: nowrap; user-select: none; color: #4a5568; }
+.msel-opt:hover { background: #f7fafc; }
+.msel-opt.sel { background: #e6f4ea; color: #1b7a3d; font-weight: 600; }
 .msel-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
 .msel-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #edf2f7; border-radius: 4px; font-size: 11px; font-weight: 500; }
 .msel-pill .pill-x { cursor: pointer; color: #718096; font-weight: 700; }
@@ -497,6 +497,8 @@ function toggleMsel(id){
   document.querySelectorAll('.msel-drop').forEach(d=>d.classList.remove('open'));
   if(!isOpen) el.classList.add('open');
 }
+function toggleMselOpt(el){ el.classList.toggle('sel'); }
+function getMselVals(dropId){ return Array.from(document.querySelectorAll('#'+dropId+' .msel-opt.sel')).map(e=>e.dataset.val); }
 document.addEventListener('click',e=>{
   if(!e.target.closest('.msel')) document.querySelectorAll('.msel-drop').forEach(d=>d.classList.remove('open'));
 });
@@ -524,13 +526,13 @@ function rPipelineTable(){
       <div class="msel">
         <div class="msel-btn" onclick="toggleMsel('pt-stage-drop')">Stages ${stageCount?'<span class="msel-count">'+stageCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
         <div class="msel-drop" id="pt-stage-drop">
-          ${(DATA.stages||[]).map(s=>`<label><input type="checkbox" value="${s.name}" ${ptableStageFilters.includes(s.name)?'checked':''} onchange="filterPTable()">${s.name} (${s.count})</label>`).join('')}
+          ${(DATA.stages||[]).map(s=>`<div class="msel-opt${ptableStageFilters.includes(s.name)?' sel':''}" data-val="${s.name}" onclick="toggleMselOpt(this);filterPTable()">${s.name} (${s.count})</div>`).join('')}
         </div>
       </div>
       <div class="msel">
         <div class="msel-btn" onclick="toggleMsel('pt-bl-drop')">Business Lines ${blCount?'<span class="msel-count">'+blCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
         <div class="msel-drop" id="pt-bl-drop">
-          ${BUSINESS_LINES.map(bl=>`<label><input type="checkbox" value="${bl}" ${ptableBlFilters.includes(bl)?'checked':''} onchange="filterPTable()">${bl}</label>`).join('')}
+          ${BUSINESS_LINES.map(bl=>`<div class="msel-opt${ptableBlFilters.includes(bl)?' sel':''}" data-val="${bl}" onclick="toggleMselOpt(this);filterPTable()">${bl}</div>`).join('')}
         </div>
       </div>
       <select id="pt-month-filter" onchange="filterPTable()">
@@ -558,9 +560,6 @@ function rPipelineTable(){
   filterPTable();
 }
 
-function getPtChecked(dropId){
-  return Array.from(document.querySelectorAll('#'+dropId+' input:checked')).map(c=>c.value);
-}
 function removePtFilter(type,val){
   if(type==='stage') ptableStageFilters=ptableStageFilters.filter(v=>v!==val);
   if(type==='bl') ptableBlFilters=ptableBlFilters.filter(v=>v!==val);
@@ -569,8 +568,8 @@ function removePtFilter(type,val){
 
 function filterPTable(){
   const q=(document.getElementById('pt-search')?.value||'').toLowerCase();
-  const stages=getPtChecked('pt-stage-drop');
-  const bls=getPtChecked('pt-bl-drop');
+  const stages=getMselVals('pt-stage-drop');
+  const bls=getMselVals('pt-bl-drop');
   const mf=document.getElementById('pt-month-filter')?.value||'';
   ptableStageFilters=stages; ptableBlFilters=bls; ptableMonthFilter=mf;
 
@@ -651,13 +650,13 @@ function rDeals(){
       <div class="msel">
         <div class="msel-btn" onclick="toggleMsel('deal-stage-drop')">Stages ${stageCount?'<span class="msel-count">'+stageCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
         <div class="msel-drop" id="deal-stage-drop">
-          ${(DATA.stages||[]).map(s=>`<label><input type="checkbox" value="${s.name}" ${dealStageFilters.includes(s.name)?'checked':''} onchange="rDealsTable()">${s.name} (${s.count})</label>`).join('')}
+          ${(DATA.stages||[]).map(s=>`<div class="msel-opt${dealStageFilters.includes(s.name)?' sel':''}" data-val="${s.name}" onclick="toggleMselOpt(this);rDealsTable()">${s.name} (${s.count})</div>`).join('')}
         </div>
       </div>
       <div class="msel">
         <div class="msel-btn" onclick="toggleMsel('deal-bl-drop')">Business Lines ${blCount?'<span class="msel-count">'+blCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
         <div class="msel-drop" id="deal-bl-drop">
-          ${BUSINESS_LINES.map(bl=>`<label><input type="checkbox" value="${bl}" ${dealBlFilters.includes(bl)?'checked':''} onchange="rDealsTable()">${bl}</label>`).join('')}
+          ${BUSINESS_LINES.map(bl=>`<div class="msel-opt${dealBlFilters.includes(bl)?' sel':''}" data-val="${bl}" onclick="toggleMselOpt(this);rDealsTable()">${bl}</div>`).join('')}
         </div>
       </div>
       <select id="deal-month-filter" onchange="rDealsTable()">
@@ -692,8 +691,8 @@ function removeDealFilter(type,val){
 
 function rDealsTable(){
   const q=(document.getElementById('deal-search')?.value||'').toLowerCase();
-  const stages=Array.from(document.querySelectorAll('#deal-stage-drop input:checked')).map(c=>c.value);
-  const bls=Array.from(document.querySelectorAll('#deal-bl-drop input:checked')).map(c=>c.value);
+  const stages=getMselVals('deal-stage-drop');
+  const bls=getMselVals('deal-bl-drop');
   const mf=document.getElementById('deal-month-filter')?.value||'';
   dealStageFilters=stages; dealBlFilters=bls; dealMonthFilter=mf;
 
