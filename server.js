@@ -138,13 +138,20 @@ async function queryFabric(query) {
 
 // ── Pipeline Stage Config ──
 const STAGE_ORDER = [
-  "Intro Call",
-  "Proposal Build",
-  "Proposal Sent",
-  "Proposal Follow Up #1",
-  "Proposal Follow Up #2",
-  "Proposal Follow Up #3",
   "Service Agreement",
+  "Proposal Follow Up #3",
+  "Proposal Follow Up #2",
+  "Proposal Follow Up #1",
+  "Proposal Sent",
+  "Proposal Build",
+  "Intro Call",
+];
+
+const HOT_STAGES = [
+  "Service Agreement",
+  "Proposal Follow Up #3",
+  "Proposal Follow Up #2",
+  "Proposal Follow Up #1",
 ];
 
 function getStageOrder(stageName) {
@@ -308,6 +315,7 @@ app.get("/health", (req, res) => {
 
 app.get("/api/deals", verifyAuth, (req, res) => {
   const stageFilter = req.query.stage;
+  const blFilter = req.query.businessLine;
   let deals = cachedDeals;
 
   if (stageFilter) {
@@ -315,11 +323,17 @@ app.get("/api/deals", verifyAuth, (req, res) => {
       (d) => d.stage.toLowerCase() === stageFilter.toLowerCase()
     );
   }
+  if (blFilter) {
+    deals = deals.filter(
+      (d) => (d.linesOfBusiness || "").toLowerCase().includes(blFilter.toLowerCase())
+    );
+  }
 
   res.json({
     count: deals.length,
     lastRefresh,
     stages: STAGE_ORDER,
+    hotStages: HOT_STAGES,
     deals,
   });
 });
@@ -344,11 +358,24 @@ app.get("/api/pipeline", verifyAuth, (req, res) => {
     (d) => !trackedNames.has(d.stage.toLowerCase())
   );
 
+  // Collect unique business lines
+  const blSet = new Set();
+  deals.forEach((d) => {
+    if (d.linesOfBusiness) {
+      d.linesOfBusiness.split(/[;,]/).forEach((bl) => {
+        const trimmed = bl.trim();
+        if (trimmed) blSet.add(trimmed);
+      });
+    }
+  });
+
   res.json({
     lastRefresh,
     totalDeals: deals.length,
     totalValue: deals.reduce((s, d) => s + d.amount, 0),
     stages,
+    hotStages: HOT_STAGES,
+    businessLines: Array.from(blSet).sort(),
     other: {
       count: other.length,
       totalValue: other.reduce((s, d) => s + d.amount, 0),

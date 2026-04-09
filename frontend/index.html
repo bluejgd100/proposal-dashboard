@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PINE Advisors — Proposal Pipeline</title>
+<title>PINE — Proposal Pipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +92,8 @@ tbody tr:hover { background: #f7fafc; }
 .b-gray { background: #edf2f7; color: #4a5568; }
 .b-blue { background: #e0effe; color: #1e40af; }
 .b-purple { background: #f3e8ff; color: #6b21a8; }
+.b-teal { background: #e0f7fa; color: #0e7490; }
+.b-rose { background: #ffe4e6; color: #be123c; }
 
 /* Search */
 .toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -169,14 +171,17 @@ tbody tr:hover { background: #f7fafc; }
 <!-- App -->
 <div class="app" id="app">
   <div class="sidebar">
-    <div class="sidebar-brand"><div class="logo">P</div><span>PINE Advisors</span></div>
+    <div class="sidebar-brand"><div class="logo">P</div><span>PINE</span></div>
     <div class="sidebar-nav">
       <div class="nav-section">Pipeline</div>
       <div class="nav-item active" onclick="go('overview')"><span class="nav-icon">&#9632;</span><span>Overview</span></div>
       <div class="nav-item" onclick="go('board')"><span class="nav-icon">&#9776;</span><span>Pipeline Board</span></div>
+      <div class="nav-item" onclick="go('ptable')"><span class="nav-icon">&#128203;</span><span>Pipeline Table</span></div>
       <div class="nav-item" onclick="go('deals')"><span class="nav-icon">&#128196;</span><span>All Deals</span></div>
       <div class="nav-section">Tracking</div>
       <div class="nav-item" onclick="go('activity')"><span class="nav-icon">&#8635;</span><span>Activity Log</span><span class="nav-badge" id="activity-count">0</span></div>
+      <div class="nav-section">Forecasting</div>
+      <div class="nav-item" onclick="go('capacity')"><span class="nav-icon">&#128197;</span><span>Capacity Timeline</span></div>
     </div>
     <div class="sidebar-footer">Signed in as<br><span class="user-name" id="sidebar-user"></span></div>
   </div>
@@ -199,6 +204,9 @@ tbody tr:hover { background: #f7fafc; }
 <script>
 const B = window.location.origin;
 let TK='', USR='', ROLE='', DATA={}, CHANGELOG=[];
+const HOT_STAGES=['Service Agreement','Proposal Follow Up #3','Proposal Follow Up #2','Proposal Follow Up #1'];
+function isHotStage(name){ return HOT_STAGES.some(h=>h.toLowerCase()===(name||'').toLowerCase()); }
+let BUSINESS_LINES=[];
 
 // ── Auth ──
 async function doLogin(){
@@ -230,6 +238,7 @@ async function refreshAll(){
   try{
     const[pipeline,changelog]=await Promise.all([F('/api/pipeline'),F('/api/changelog')]);
     DATA=pipeline; CHANGELOG=changelog.entries||[];
+    BUSINESS_LINES=DATA.businessLines||[];
     document.getElementById('activity-count').textContent=CHANGELOG.length;
     document.getElementById('refresh-time').textContent='Updated '+new Date().toLocaleTimeString();
     go(currentView||'overview');
@@ -249,9 +258,9 @@ let currentView='overview';
 function go(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(n=>{n.classList.toggle('active',n.getAttribute('onclick')===`go('${v}')`)});
-  const titles={overview:'Pipeline Overview',board:'Pipeline Board',deals:'All Deals',activity:'Activity Log'};
+  const titles={overview:'Pipeline Overview',board:'Pipeline Board',ptable:'Pipeline Table',deals:'All Deals',activity:'Activity Log',capacity:'Capacity Timeline'};
   document.getElementById('page-title').textContent=titles[v]||v;
-  const fn={overview:rOverview,board:rBoard,deals:rDeals,activity:rActivity};
+  const fn={overview:rOverview,board:rBoard,ptable:rPipelineTable,deals:rDeals,activity:rActivity,capacity:rCapacity};
   if(fn[v]) fn[v]();
 }
 
@@ -263,20 +272,22 @@ function setContent(h){document.getElementById('content').innerHTML=h;}
 function stageColor(name){
   const n=name.toLowerCase();
   if(n.includes('service agreement')) return '#2b6b3e';
-  if(n.includes('follow up #3')) return '#1b7a3d';
-  if(n.includes('follow up #2')) return '#3d8b5e';
-  if(n.includes('follow up #1')) return '#4a9e6e';
+  if(n.includes('follow up #3')) return '#7c3aed';
+  if(n.includes('follow up #2')) return '#2563eb';
+  if(n.includes('follow up #1')) return '#0891b2';
   if(n.includes('proposal sent')) return '#d97706';
-  if(n.includes('proposal build')) return '#2b6cb0';
+  if(n.includes('proposal build')) return '#dc2626';
   if(n.includes('intro call')) return '#6b7280';
   return '#718096';
 }
 function stageBadge(name){
-  const n=name.toLowerCase();
+  const n=(name||'').toLowerCase();
   if(n.includes('service agreement')) return '<span class="b b-green">'+name+'</span>';
-  if(n.includes('follow up')) return '<span class="b b-amber">'+name+'</span>';
-  if(n.includes('proposal sent')) return '<span class="b b-blue">'+name+'</span>';
-  if(n.includes('proposal build')) return '<span class="b b-purple">'+name+'</span>';
+  if(n.includes('follow up #3')) return '<span class="b b-purple">'+name+'</span>';
+  if(n.includes('follow up #2')) return '<span class="b b-blue">'+name+'</span>';
+  if(n.includes('follow up #1')) return '<span class="b b-teal">'+name+'</span>';
+  if(n.includes('proposal sent')) return '<span class="b b-amber">'+name+'</span>';
+  if(n.includes('proposal build')) return '<span class="b b-rose">'+name+'</span>';
   if(n.includes('intro call')) return '<span class="b b-gray">'+name+'</span>';
   return '<span class="b b-gray">'+name+'</span>';
 }
@@ -291,13 +302,18 @@ function rOverview(){
   const saDeals=S.find(s=>s.name.toLowerCase().includes('service agreement'));
   const saCount=saDeals?saDeals.count:0;
   const saValue=saDeals?saDeals.totalValue:0;
-  const recentChanges=CHANGELOG.filter(c=>c.type==='stage_change').slice(0,5);
+  const tenDaysAgo=Date.now()-10*864e5;
+  const recentChanges=CHANGELOG.filter(c=>{
+    if(c.type!=='stage_change') return false;
+    if(new Date(c.timestamp).getTime()<tenDaysAgo) return false;
+    return isHotStage(c.fromStage)||isHotStage(c.toStage);
+  }).slice(0,20);
 
   setContent(`
     <div class="g5" style="margin-bottom:20px;">
       <div class="card kpi"><div class="kpi-label">Total Deals</div><div class="kpi-val">${total}</div><div class="kpi-sub">In pipeline</div></div>
       <div class="card kpi blue"><div class="kpi-label">Pipeline Value</div><div class="kpi-val">${fmt$(totalVal)}</div><div class="kpi-sub">All stages</div></div>
-      <div class="card kpi green"><div class="kpi-label">Service Agreements</div><div class="kpi-val">${saCount}</div><div class="kpi-sub">${fmt$(saValue)}</div></div>
+      <div class="card kpi green clickable" onclick="goToStage('Service Agreement')"><div class="kpi-label">Service Agreements</div><div class="kpi-val">${saCount}</div><div class="kpi-sub">${fmt$(saValue)}</div></div>
       <div class="card kpi amber"><div class="kpi-label">Avg Deal Value</div><div class="kpi-val">${total?fmt$(totalVal/total):'\u2014'}</div><div class="kpi-sub">Per deal</div></div>
       <div class="card kpi"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${CHANGELOG.filter(c=>c.type==='stage_change').length}</div><div class="kpi-sub">Tracked</div></div>
     </div>
@@ -320,7 +336,7 @@ function rOverview(){
           <table>
             <thead><tr><th>Stage</th><th>Deals</th><th>Total Value</th><th>Avg Value</th></tr></thead>
             <tbody>
-              ${S.map(s=>`<tr><td>${stageBadge(s.name)}</td><td>${s.count}</td><td>${fmt$(s.totalValue)}</td><td>${s.count?fmt$(s.totalValue/s.count):'\u2014'}</td></tr>`).join('')}
+              ${S.map(s=>`<tr style="cursor:pointer" onclick="goToStage('${s.name}')"><td>${stageBadge(s.name)}</td><td>${s.count}</td><td>${fmt$(s.totalValue)}</td><td>${s.count?fmt$(s.totalValue/s.count):'\u2014'}</td></tr>`).join('')}
             </tbody>
           </table>
         </div>
@@ -344,7 +360,7 @@ function rOverview(){
     const pct=Math.max((s.count/maxCount)*100,2);
     return `<div class="funnel-row">
       <div class="funnel-label">${s.name}</div>
-      <div class="funnel-bar-wrap" onclick="go('board')">
+      <div class="funnel-bar-wrap" onclick="goToStage('${s.name}')">
         <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${s.count}</span></div>
       </div>
       <div class="funnel-val">${s.count} deal${s.count!==1?'s':''}</div>
@@ -358,7 +374,7 @@ function rOverview(){
     const pct=Math.max((s.totalValue/maxVal)*100,2);
     return `<div class="funnel-row">
       <div class="funnel-label">${s.name}</div>
-      <div class="funnel-bar-wrap">
+      <div class="funnel-bar-wrap" onclick="goToStage('${s.name}')">
         <div class="funnel-bar" style="width:${pct}%;background:${stageColor(s.name)}"><span>${fmt$(s.totalValue)}</span></div>
       </div>
       <div class="funnel-val">${fmt$(s.totalValue)}</div>
@@ -374,18 +390,22 @@ function rBoard(){
   setContent(`
     <div class="toolbar">
       <input type="text" id="board-search" placeholder="Search deals..." oninput="filterBoard()">
+      <select id="board-bl-filter" onchange="filterBoard()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}">${bl}</option>`).join('')}
+      </select>
     </div>
     <div class="board" id="board">
       ${S.map(s=>`
         <div class="board-col" data-stage="${s.name}">
-          <div class="board-col-header">
+          <div class="board-col-header" style="cursor:pointer" onclick="goToStage('${s.name}')">
             <span>${s.name}</span>
             <span class="col-count">${s.count}</span>
           </div>
           <div class="board-col-meta">${fmt$(s.totalValue)}</div>
           <div class="board-deals" data-stage="${s.name}">
             ${s.deals.map(d=>`
-              <div class="deal-card" onclick="window.open('https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}','_blank')" title="Open in HubSpot">
+              <div class="deal-card" data-bl="${(d.linesOfBusiness||'').toLowerCase()}" onclick="window.open('https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}','_blank')" title="Open in HubSpot">
                 <div class="dc-name">${d.name}</div>
                 ${d.clientCompany?'<div style="font-size:10px;color:#4a5568;margin-bottom:3px;">'+d.clientCompany+'</div>':''}
                 <div class="dc-amount">${d.amount?fmt$(d.amount):'\u2014'}</div>
@@ -406,10 +426,94 @@ function rBoard(){
 
 function filterBoard(){
   const q=(document.getElementById('board-search')?.value||'').toLowerCase();
+  const bf=(document.getElementById('board-bl-filter')?.value||'').toLowerCase();
   document.querySelectorAll('.deal-card').forEach(c=>{
     const txt=(c.textContent||'').toLowerCase();
-    c.style.display=(!q||txt.includes(q))?'':'none';
+    const bl=(c.getAttribute('data-bl')||'').toLowerCase();
+    c.style.display=((!q||txt.includes(q))&&(!bf||bl.includes(bf)))?'':'none';
   });
+}
+
+// ══════════════════════════════════════════
+// 2b. PIPELINE TABLE (Click-through target)
+// ══════════════════════════════════════════
+let ptableStageFilter='', ptableBlFilter='';
+let ptableSort={col:'name',dir:1};
+
+function goToStage(stageName){ ptableStageFilter=stageName; go('ptable'); }
+function goToBl(bl){ ptableBlFilter=bl; ptableStageFilter=''; go('ptable'); }
+
+function rPipelineTable(){
+  const allDeals=[];
+  for(const s of DATA.stages||[]) allDeals.push(...s.deals);
+  if(DATA.other) allDeals.push(...(DATA.other.deals||[]));
+
+  setContent(`
+    <div class="toolbar">
+      <input type="text" id="pt-search" placeholder="Search deals..." oninput="filterPTable()">
+      <select id="pt-stage-filter" onchange="filterPTable()">
+        <option value="">All Stages</option>
+        ${(DATA.stages||[]).map(s=>`<option value="${s.name}" ${s.name===ptableStageFilter?'selected':''}>${s.name} (${s.count})</option>`).join('')}
+      </select>
+      <select id="pt-bl-filter" onchange="filterPTable()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}" ${bl===ptableBlFilter?'selected':''}>${bl}</option>`).join('')}
+      </select>
+    </div>
+    <div class="card"><div class="tbl-wrap"><table>
+      <thead><tr>
+        <th onclick="sortPTable('name')">Deal Name</th>
+        <th onclick="sortPTable('clientCompany')">Client</th>
+        <th onclick="sortPTable('amount')">Amount</th>
+        <th onclick="sortPTable('stage')">Stage</th>
+        <th onclick="sortPTable('ownerName')">Owner</th>
+        <th onclick="sortPTable('linesOfBusiness')">Business Line</th>
+        <th onclick="sortPTable('closeDate')">Close Date</th>
+        <th onclick="sortPTable('proposalDate')">Proposal Date</th>
+      </tr></thead>
+      <tbody id="pt-tbody"></tbody>
+    </table></div></div>
+  `);
+  window._ptDeals=allDeals;
+  filterPTable();
+}
+
+function filterPTable(){
+  const q=(document.getElementById('pt-search')?.value||'').toLowerCase();
+  const sf=document.getElementById('pt-stage-filter')?.value||'';
+  const bf=document.getElementById('pt-bl-filter')?.value||'';
+  ptableStageFilter=sf; ptableBlFilter=bf;
+
+  let deals=(window._ptDeals||[]).filter(d=>{
+    if(sf&&d.stage!==sf) return false;
+    if(bf&&!(d.linesOfBusiness||'').toLowerCase().includes(bf.toLowerCase())) return false;
+    if(q&&!d.name.toLowerCase().includes(q)&&!(d.clientCompany||'').toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  deals.sort((a,b)=>{
+    const va=a[ptableSort.col]||'', vb=b[ptableSort.col]||'';
+    if(typeof va==='number') return (va-vb)*ptableSort.dir;
+    return String(va).localeCompare(String(vb))*ptableSort.dir;
+  });
+  const tbody=document.getElementById('pt-tbody');
+  if(!tbody) return;
+  tbody.innerHTML=deals.map(d=>`
+    <tr>
+      <td><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}" target="_blank">${d.name}</a></td>
+      <td>${d.clientCompany||'\u2014'}</td>
+      <td style="font-weight:600;">${d.amount?fmt$(d.amount):'\u2014'}</td>
+      <td>${stageBadge(d.stage)}</td>
+      <td>${d.ownerName}</td>
+      <td>${d.linesOfBusiness||'\u2014'}</td>
+      <td>${fD(d.closeDate)}</td>
+      <td>${fD(d.proposalDate)}</td>
+    </tr>
+  `).join('');
+}
+
+function sortPTable(col){
+  if(ptableSort.col===col) ptableSort.dir*=-1; else { ptableSort.col=col; ptableSort.dir=1; }
+  filterPTable();
 }
 
 // ══════════════════════════════════════════
@@ -427,6 +531,10 @@ function rDeals(){
       <select id="deal-stage-filter" onchange="rDealsTable()">
         <option value="">All Stages</option>
         ${(DATA.stages||[]).map(s=>`<option value="${s.name}">${s.name} (${s.count})</option>`).join('')}
+      </select>
+      <select id="deal-bl-filter" onchange="rDealsTable()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}">${bl}</option>`).join('')}
       </select>
     </div>
     <div class="card"><div class="tbl-wrap"><table id="deals-table">
@@ -450,8 +558,10 @@ function rDeals(){
 function rDealsTable(){
   const q=(document.getElementById('deal-search')?.value||'').toLowerCase();
   const sf=document.getElementById('deal-stage-filter')?.value||'';
+  const bf=document.getElementById('deal-bl-filter')?.value||'';
   let deals=(window._allDeals||[]).filter(d=>{
     if(sf&&d.stage!==sf) return false;
+    if(bf&&!(d.linesOfBusiness||'').toLowerCase().includes(bf.toLowerCase())) return false;
     if(q&&!d.name.toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)&&!d.stage.toLowerCase().includes(q)&&!(d.clientCompany||'').toLowerCase().includes(q)&&!(d.linesOfBusiness||'').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -484,14 +594,25 @@ function sortDeals(col){
 // ══════════════════════════════════════════
 // 4. ACTIVITY LOG
 // ══════════════════════════════════════════
+function getDealBl(dealId){
+  for(const s of DATA.stages||[]){ const d=s.deals.find(d=>d.id==dealId); if(d) return d.linesOfBusiness||''; }
+  return '';
+}
+
 function rActivity(){
-  const entries=CHANGELOG||[];
+  const allEntries=CHANGELOG||[];
+  const entries=allEntries.filter(c=>{
+    if(c.type==='stage_change') return isHotStage(c.fromStage)||isHotStage(c.toStage);
+    if(c.type==='new_deal') return isHotStage(c.toStage);
+    if(c.type==='deal_removed') return isHotStage(c.fromStage);
+    return false;
+  });
   const stageChanges=entries.filter(c=>c.type==='stage_change');
   const newDeals=entries.filter(c=>c.type==='new_deal');
 
   setContent(`
     <div class="g3" style="margin-bottom:20px;">
-      <div class="card kpi"><div class="kpi-label">Total Events</div><div class="kpi-val">${entries.length}</div></div>
+      <div class="card kpi"><div class="kpi-label">Hot Stage Events</div><div class="kpi-val">${entries.length}</div></div>
       <div class="card kpi blue"><div class="kpi-label">Stage Changes</div><div class="kpi-val">${stageChanges.length}</div></div>
       <div class="card kpi green"><div class="kpi-label">New Deals</div><div class="kpi-val">${newDeals.length}</div></div>
     </div>
@@ -503,11 +624,15 @@ function rActivity(){
         <option value="new_deal">New Deals</option>
         <option value="deal_removed">Removed</option>
       </select>
+      <select id="log-bl-filter" onchange="filterLog()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}">${bl}</option>`).join('')}
+      </select>
     </div>
     <div class="card">
       <div class="timeline" id="log-timeline">
         ${entries.length?entries.map(c=>`
-          <div class="tl-item ${c.type==='stage_change'?'stage-change':c.type==='new_deal'?'new-deal':'removed'}" data-type="${c.type}" data-name="${(c.dealName||'').toLowerCase()}">
+          <div class="tl-item ${c.type==='stage_change'?'stage-change':c.type==='new_deal'?'new-deal':'removed'}" data-type="${c.type}" data-name="${(c.dealName||'').toLowerCase()}" data-bl="${getDealBl(c.dealId).toLowerCase()}">
             <div class="tl-date">${fDT(c.timestamp)}</div>
             <div class="tl-title">
               <a href="https://app.hubspot.com/contacts/45669656/record/0-3/${c.dealId}" target="_blank">${c.dealName}</a>
@@ -519,7 +644,7 @@ function rActivity(){
               ${c.type==='deal_removed'?'<span class="b b-red">Removed</span> from '+stageBadge(c.fromStage):''}
             </div>
           </div>
-        `).join(''):'<p style="color:#718096;font-size:13px;padding:20px 0;">No activity recorded yet. The log captures deal stage changes between data refreshes. Changes will appear after the next sync.</p>'}
+        `).join(''):'<p style="color:#718096;font-size:13px;padding:20px 0;">No hot-stage activity recorded yet. Changes involving Service Agreement and Follow Up stages will appear after the next sync.</p>'}
       </div>
     </div>
   `);
@@ -528,11 +653,150 @@ function rActivity(){
 function filterLog(){
   const q=(document.getElementById('log-search')?.value||'').toLowerCase();
   const t=document.getElementById('log-type')?.value||'';
+  const bf=(document.getElementById('log-bl-filter')?.value||'').toLowerCase();
   document.querySelectorAll('#log-timeline .tl-item').forEach(el=>{
-    const type=el.dataset.type, name=el.dataset.name||'';
-    const show=(!t||type===t)&&(!q||name.includes(q));
+    const type=el.dataset.type, name=el.dataset.name||'', bl=el.dataset.bl||'';
+    const show=(!t||type===t)&&(!q||name.includes(q))&&(!bf||bl.includes(bf));
     el.style.display=show?'':'none';
   });
+}
+// ══════════════════════════════════════════
+// 5. CAPACITY TIMELINE
+// ══════════════════════════════════════════
+function rCapacity(){
+  const allDeals=[];
+  for(const s of DATA.stages||[]){ if(isHotStage(s.name)) allDeals.push(...s.deals); }
+
+  // Group by business line
+  const byBl={};
+  allDeals.forEach(d=>{
+    const bls=(d.linesOfBusiness||'Unspecified').split(/[;,]/).map(b=>b.trim()).filter(Boolean);
+    if(!bls.length) bls.push('Unspecified');
+    bls.forEach(bl=>{ if(!byBl[bl]) byBl[bl]=[]; byBl[bl].push(d); });
+  });
+
+  // Group by month based on closeDate
+  const byMonth={};
+  allDeals.forEach(d=>{
+    const cd=d.closeDate?new Date(d.closeDate):null;
+    if(!cd||isNaN(cd)) return;
+    const key=cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0');
+    if(!byMonth[key]) byMonth[key]=[];
+    byMonth[key].push(d);
+  });
+  const sortedMonths=Object.keys(byMonth).sort();
+
+  // Group by stage
+  const byStage={};
+  allDeals.forEach(d=>{ if(!byStage[d.stage]) byStage[d.stage]=[]; byStage[d.stage].push(d); });
+
+  // Closing this month
+  const now=new Date(), curY=now.getFullYear(), curM=now.getMonth();
+  const closingThisMonth=allDeals.filter(d=>{ if(!d.closeDate) return false; const cd=new Date(d.closeDate); return cd.getFullYear()===curY&&cd.getMonth()===curM; });
+
+  setContent(`
+    <div class="toolbar">
+      <select id="cap-bl-filter" onchange="filterCapacity()">
+        <option value="">All Business Lines</option>
+        ${BUSINESS_LINES.map(bl=>`<option value="${bl}">${bl}</option>`).join('')}
+      </select>
+      <select id="cap-stage-filter" onchange="filterCapacity()">
+        <option value="">All Hot Stages</option>
+        ${HOT_STAGES.map(s=>`<option value="${s}">${s}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="g4" style="margin-bottom:20px;">
+      <div class="card kpi green"><div class="kpi-label">Hot Stage Deals</div><div class="kpi-val">${allDeals.length}</div></div>
+      <div class="card kpi blue"><div class="kpi-label">Hot Stage Value</div><div class="kpi-val">${fmt$(allDeals.reduce((s,d)=>s+d.amount,0))}</div></div>
+      <div class="card kpi amber"><div class="kpi-label">Business Lines</div><div class="kpi-val">${Object.keys(byBl).length}</div></div>
+      <div class="card kpi"><div class="kpi-label">Closing This Month</div><div class="kpi-val">${closingThisMonth.length}</div><div class="kpi-sub">${fmt$(closingThisMonth.reduce((s,d)=>s+d.amount,0))}</div></div>
+    </div>
+
+    <div class="g2">
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Monthly Close Forecast</h3>
+        <div class="funnel" id="cap-month-funnel">
+          ${sortedMonths.length?sortedMonths.map(m=>{
+            const deals=byMonth[m], totalVal=deals.reduce((s,d)=>s+d.amount,0);
+            const maxCount=Math.max(...sortedMonths.map(k=>byMonth[k].length),1);
+            const pct=Math.max((deals.length/maxCount)*100,2);
+            const label=new Date(m+'-01').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+            return '<div class="funnel-row"><div class="funnel-label">'+label+'</div><div class="funnel-bar-wrap" onclick="filterCapMonth(\''+m+'\')"><div class="funnel-bar" style="width:'+pct+'%;background:#2b6b3e"><span>'+deals.length+' deals</span></div></div><div class="funnel-val">'+fmt$(totalVal)+'</div></div>';
+          }).join(''):'<p style="color:#718096;font-size:13px;">No deals with close dates in hot stages.</p>'}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px;">
+        <h3>By Stage</h3>
+        <div class="funnel">
+          ${HOT_STAGES.map(sn=>{
+            const deals=byStage[sn]||[];
+            const totalVal=deals.reduce((s,d)=>s+d.amount,0);
+            const maxCount=Math.max(...HOT_STAGES.map(h=>(byStage[h]||[]).length),1);
+            const pct=Math.max((deals.length/maxCount)*100,2);
+            return '<div class="funnel-row"><div class="funnel-label">'+sn+'</div><div class="funnel-bar-wrap" onclick="goToStage(\''+sn+'\')"><div class="funnel-bar" style="width:'+pct+'%;background:'+stageColor(sn)+'"><span>'+deals.length+'</span></div></div><div class="funnel-val">'+fmt$(totalVal)+'</div></div>';
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h3>By Business Line</h3>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Business Line</th><th>Deals</th><th>Total Value</th><th>Avg Value</th><th>Earliest Close</th></tr></thead>
+        <tbody>
+          ${Object.entries(byBl).sort((a,b)=>b[1].length-a[1].length).map(([bl,deals])=>{
+            const totalVal=deals.reduce((s,d)=>s+d.amount,0);
+            const earliest=deals.filter(d=>d.closeDate).sort((a,b)=>new Date(a.closeDate)-new Date(b.closeDate))[0];
+            return '<tr style="cursor:pointer" onclick="goToBl(\''+bl.replace(/'/g,"\\'")+'\')"><td><strong>'+bl+'</strong></td><td>'+deals.length+'</td><td>'+fmt$(totalVal)+'</td><td>'+fmt$(totalVal/deals.length)+'</td><td>'+(earliest?fD(earliest.closeDate):'\u2014')+'</td></tr>';
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>Hot Stage Deal Timeline</h3>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Deal</th><th>Client</th><th>Stage</th><th>Amount</th><th>Business Line</th><th>Close Date</th><th>Proposal Date</th><th>Owner</th></tr></thead>
+        <tbody id="cap-deals-tbody">
+          ${allDeals.sort((a,b)=>{
+            const da=a.closeDate?new Date(a.closeDate).getTime():Infinity;
+            const db=b.closeDate?new Date(b.closeDate).getTime():Infinity;
+            return da-db;
+          }).map(d=>`
+            <tr data-bl="${(d.linesOfBusiness||'').toLowerCase()}" data-stage="${d.stage}">
+              <td><a href="https://app.hubspot.com/contacts/45669656/record/0-3/${d.id}" target="_blank">${d.name}</a></td>
+              <td>${d.clientCompany||'\u2014'}</td>
+              <td>${stageBadge(d.stage)}</td>
+              <td style="font-weight:600;">${d.amount?fmt$(d.amount):'\u2014'}</td>
+              <td>${d.linesOfBusiness||'\u2014'}</td>
+              <td>${fD(d.closeDate)}</td>
+              <td>${fD(d.proposalDate)}</td>
+              <td>${d.ownerName}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `);
+}
+
+function filterCapacity(){
+  const bf=(document.getElementById('cap-bl-filter')?.value||'').toLowerCase();
+  const sf=document.getElementById('cap-stage-filter')?.value||'';
+  document.querySelectorAll('#cap-deals-tbody tr').forEach(tr=>{
+    const bl=tr.getAttribute('data-bl')||'';
+    const stage=tr.getAttribute('data-stage')||'';
+    tr.style.display=((!bf||bl.includes(bf))&&(!sf||stage===sf))?'':'none';
+  });
+}
+
+function filterCapMonth(monthKey){
+  // Navigate to pipeline table filtered to deals closing in that month
+  // We'll use a workaround: just go to ptable and show all hot stages
+  ptableStageFilter=''; ptableBlFilter='';
+  go('ptable');
 }
 </script>
 </body>
