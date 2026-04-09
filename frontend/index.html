@@ -514,7 +514,7 @@ function rPipelineTable(){
     if(isNaN(cd)) return;
     monthSet.add(cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0'));
   });
-  const months=Array.from(monthSet).sort();
+  const months=Array.from(monthSet).sort().reverse();
 
   const stageCount=ptableStageFilters.length, blCount=ptableBlFilters.length;
 
@@ -539,6 +539,7 @@ function rPipelineTable(){
       </select>
     </div>
     <div class="msel-pills" id="pt-pills"></div>
+    <div id="pt-summary" style="margin-bottom:10px;font-size:13px;color:#4a5568;"></div>
     <div class="card"><div class="tbl-wrap"><table>
       <thead><tr>
         <th onclick="sortPTable('name')">Deal Name</th>
@@ -598,6 +599,10 @@ function filterPTable(){
     if(typeof va==='number') return (va-vb)*ptableSort.dir;
     return String(va).localeCompare(String(vb))*ptableSort.dir;
   });
+  // Summary
+  const sumEl=document.getElementById('pt-summary');
+  if(sumEl){ const totalAmt=deals.reduce((s,d)=>s+d.amount,0); sumEl.innerHTML='<strong>'+deals.length+'</strong> deal'+(deals.length!==1?'s':'')+' &middot; Total: <strong style="color:#2b6b3e">'+fmt$(totalAmt)+'</strong>'; }
+
   const tbody=document.getElementById('pt-tbody');
   if(!tbody) return;
   tbody.innerHTML=deals.map(d=>`
@@ -623,23 +628,44 @@ function sortPTable(col){
 // 3. ALL DEALS (Table)
 // ══════════════════════════════════════════
 let dealSort={col:'name',dir:1};
+let dealStageFilters=[], dealBlFilters=[], dealMonthFilter='';
+
 function rDeals(){
   const allDeals=[];
   for(const s of DATA.stages||[]) allDeals.push(...s.deals);
   if(DATA.other) allDeals.push(...(DATA.other.deals||[]));
 
+  const monthSet=new Set();
+  allDeals.forEach(d=>{
+    if(!d.closeDate) return;
+    const cd=new Date(d.closeDate);
+    if(isNaN(cd)) return;
+    monthSet.add(cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0'));
+  });
+  const months=Array.from(monthSet).sort().reverse();
+  const stageCount=dealStageFilters.length, blCount=dealBlFilters.length;
+
   setContent(`
     <div class="toolbar">
       <input type="text" id="deal-search" placeholder="Search by deal name, company, owner, stage..." oninput="rDealsTable()">
-      <select id="deal-stage-filter" onchange="rDealsTable()">
-        <option value="">All Stages</option>
-        ${(DATA.stages||[]).map(s=>`<option value="${s.name}">${s.name} (${s.count})</option>`).join('')}
-      </select>
-      <select id="deal-bl-filter" onchange="rDealsTable()">
-        <option value="">All Business Lines</option>
-        ${BUSINESS_LINES.map(bl=>`<option value="${bl}">${bl}</option>`).join('')}
+      <div class="msel">
+        <div class="msel-btn" onclick="toggleMsel('deal-stage-drop')">Stages ${stageCount?'<span class="msel-count">'+stageCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
+        <div class="msel-drop" id="deal-stage-drop">
+          ${(DATA.stages||[]).map(s=>`<label><input type="checkbox" value="${s.name}" ${dealStageFilters.includes(s.name)?'checked':''} onchange="rDealsTable()">${s.name} (${s.count})</label>`).join('')}
+        </div>
+      </div>
+      <div class="msel">
+        <div class="msel-btn" onclick="toggleMsel('deal-bl-drop')">Business Lines ${blCount?'<span class="msel-count">'+blCount+'</span>':'<span style="color:#a0aec0">All</span>'}</div>
+        <div class="msel-drop" id="deal-bl-drop">
+          ${BUSINESS_LINES.map(bl=>`<label><input type="checkbox" value="${bl}" ${dealBlFilters.includes(bl)?'checked':''} onchange="rDealsTable()">${bl}</label>`).join('')}
+        </div>
+      </div>
+      <select id="deal-month-filter" onchange="rDealsTable()">
+        <option value="">All Close Months</option>
+        ${months.map(m=>{const label=new Date(m+'-01').toLocaleDateString('en-US',{month:'short',year:'numeric'});return `<option value="${m}" ${m===dealMonthFilter?'selected':''}>${label}</option>`;}).join('')}
       </select>
     </div>
+    <div class="msel-pills" id="deal-pills"></div>
     <div class="card"><div class="tbl-wrap"><table id="deals-table">
       <thead><tr>
         <th onclick="sortDeals('name')">Deal Name</th>
@@ -658,13 +684,36 @@ function rDeals(){
   rDealsTable();
 }
 
+function removeDealFilter(type,val){
+  if(type==='stage') dealStageFilters=dealStageFilters.filter(v=>v!==val);
+  if(type==='bl') dealBlFilters=dealBlFilters.filter(v=>v!==val);
+  rDeals();
+}
+
 function rDealsTable(){
   const q=(document.getElementById('deal-search')?.value||'').toLowerCase();
-  const sf=document.getElementById('deal-stage-filter')?.value||'';
-  const bf=document.getElementById('deal-bl-filter')?.value||'';
+  const stages=Array.from(document.querySelectorAll('#deal-stage-drop input:checked')).map(c=>c.value);
+  const bls=Array.from(document.querySelectorAll('#deal-bl-drop input:checked')).map(c=>c.value);
+  const mf=document.getElementById('deal-month-filter')?.value||'';
+  dealStageFilters=stages; dealBlFilters=bls; dealMonthFilter=mf;
+
+  // Render pills
+  const pillsEl=document.getElementById('deal-pills');
+  if(pillsEl){
+    pillsEl.innerHTML=stages.map(s=>`<span class="msel-pill" style="border-left:3px solid ${stageColor(s)}">${s} <span class="pill-x" onclick="removeDealFilter('stage','${s}')">&times;</span></span>`).join('')
+      +bls.map(b=>`<span class="msel-pill" style="border-left:3px solid #2b6b3e">${b} <span class="pill-x" onclick="removeDealFilter('bl','${b}')">&times;</span></span>`).join('');
+  }
+
   let deals=(window._allDeals||[]).filter(d=>{
-    if(sf&&d.stage!==sf) return false;
-    if(bf&&!(d.linesOfBusiness||'').toLowerCase().includes(bf.toLowerCase())) return false;
+    if(stages.length&&!stages.includes(d.stage)) return false;
+    if(bls.length){const dl=(d.linesOfBusiness||'').toLowerCase();if(!bls.some(b=>dl.includes(b.toLowerCase()))) return false;}
+    if(mf){
+      if(!d.closeDate) return false;
+      const cd=new Date(d.closeDate);
+      if(isNaN(cd)) return false;
+      const dk=cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0');
+      if(dk!==mf) return false;
+    }
     if(q&&!d.name.toLowerCase().includes(q)&&!(d.ownerName||'').toLowerCase().includes(q)&&!d.stage.toLowerCase().includes(q)&&!(d.clientCompany||'').toLowerCase().includes(q)&&!(d.linesOfBusiness||'').toLowerCase().includes(q)) return false;
     return true;
   });
