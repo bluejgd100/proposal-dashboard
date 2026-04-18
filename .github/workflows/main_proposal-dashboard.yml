@@ -34,6 +34,9 @@ jobs:
         with:
           name: node-app
           path: .
+          # Artifact only needs to live long enough for the deploy job below
+          # to download it. 1 day keeps storage usage from growing unbounded.
+          retention-days: 1
 
   deploy:
     runs-on: ubuntu-latest
